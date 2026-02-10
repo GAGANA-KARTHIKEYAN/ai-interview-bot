@@ -21,22 +21,17 @@
     "resume": "/uploads/resumes/User1_gmail_com.pdf",
     "parsedResume": {
       "skills": [
-        "c\\+",
-        "c\\+\\+",
-        "java",
-        "javascript",
-        "js",
-        "python",
-        "sql"
+        "git",
+        "js"
       ],
       "method": "advanced-rules",
-      "textPreview": "%pdf-1.4 % 1 0 obj <</title (computer science resume) /producer (skia/pdf m146 google docs renderer)>> endobj 3 0 obj <</ca 1 /bm /normal>> endobj 5 0 obj <</ca 1 /ca 1 /lc 0 /lj 0 /lw 1.33333337 /ml 10 /sa true /bm /normal>> endobj 6 0 obj <</filter /flatedecode /length 981>> stream x x 7 w ;p 6n `4 &9 `[ x $ k v w d a fe l \\ i ww n b ` u ~ - l6 v v j}t#ln *j' j l p 3 8 fc c e o ; kh $ noq u g ] t s c f: oh > & ~ u c it=6 2b1{v{ x 1 pd l g k @5^ 9\\ $ # d b\"b e oa \\ 4 ; hgk @ b) ! (g ur% v m7 `g",
-      "rawLength": 25156,
+      "textPreview": "%pdf-1.5 % 3 0 obj << /linearized 1 /l 64558 /h [ 2630 133 ] /o 8 /e 63966 /n 1 /t 64277 >> endobj 4 0 obj << /type /xref /length 68 /filter /flatedecode /decodeparms << /columns 4 /predictor 12 >> /w [ 1 2 1 ] /index [ 3 38 ] /info 1 0 r /root 5 0 r /size 41 /prev 64278 /id [<d652d017d5611fcc27a235902a646c50><a17ff42dd6f63925338480d2f5ea7c3a>] >> stream x cbd g`b`8 $ ]a )@ }* $ a\\ \\ h q ( h > e`b r ic` l k endstream endobj 5 0 obj << /names 40 0 r /openaction 18 0 r /pagelabels << /nums [ 0 << ",
+      "rawLength": 64558,
       "cleanLength": 15000,
-      "count": 7,
-      "parsedAt": "2026-02-10T05:17:32.875Z"
+      "count": 2,
+      "parsedAt": "2026-02-10T11:59:16.954Z"
     },
-    "updatedAt": "2026-02-10T05:17:28.003Z"
+    "updatedAt": "2026-02-10T11:49:47.823Z"
   },
   {
     "email": "User2@gmail.com",
