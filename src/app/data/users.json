@@ -1,0 +1,41 @@
+[
+  {
+    "email": "rakshithak.btech23@rvu.edu.in",
+    "password": "rakshitha@bolo",
+    "createdAt": "2026-02-01T15:54:44.987Z"
+  },
+  {
+    "email": "gaganak23@gmail.com",
+    "password": "gaggu2005",
+    "createdAt": "2026-02-01T16:05:30.044Z"
+  },
+  {
+    "email": "hello@gmail.com",
+    "password": "hello123",
+    "createdAt": "2026-02-02T09:05:26.140Z"
+  },
+  {
+    "id": 1770254526336,
+    "email": "User1@gmail.com",
+    "password": "User123",
+    "name": "User1",
+    "resume": null,
+    "createdAt": "2026-02-05T01:22:06.336Z"
+  },
+  {
+    "id": 1770255932811,
+    "email": "User2@gmail.com",
+    "password": "User234",
+    "name": "User2",
+    "resume": null,
+    "createdAt": "2026-02-05T01:45:32.811Z"
+  },
+  {
+    "id": 1770261585873,
+    "email": "gaganak.btech23@rvu.edu.in",
+    "password": "gaggu2005",
+    "name": "gagana.K",
+    "resume": null,
+    "createdAt": "2026-02-05T03:19:45.873Z"
+  }
+]
