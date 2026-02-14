@@ -37,5 +37,13 @@
     "name": "gagana.K",
     "resume": null,
     "createdAt": "2026-02-05T03:19:45.873Z"
+  },
+  {
+    "id": 1770743292558,
+    "email": "User0@gmail.com",
+    "password": "User0",
+    "name": "User0",
+    "resume": null,
+    "createdAt": "2026-02-10T17:08:12.558Z"
   }
 ]

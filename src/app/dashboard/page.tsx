@@ -30,6 +30,30 @@ export default function Dashboard() {
   const cvFileRef = useRef<HTMLInputElement>(null);
   const BACKEND = "http://127.0.0.1:8000";
 
+  // ========== CAMERA STATES ==========
+  const [showCamera, setShowCamera] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [recordingTimeLeft, setRecordingTimeLeft] = useState(180);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const cameraTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ========== TAB SWITCH DETECTION ==========
+  const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  const [showTabWarning, setShowTabWarning] = useState(false);
+  const [isInterviewActive, setIsInterviewActive] = useState(false);
+  const [interviewTerminated, setInterviewTerminated] = useState(false);
+  const visibilityRef = useRef<boolean>(true);
+  const warningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ========== AUTO-ADVANCE TIMER ==========
+  const [answerTimer, setAnswerTimer] = useState(180);
+  const [timerActive, setTimerActive] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
   // ========== YOUR ORIGINAL FUNCTIONS ==========
   const refreshProfile = useCallback(() => {
     if (!user?.email) return;
@@ -59,32 +83,227 @@ export default function Dashboard() {
     setUser(parsedUser);
     refreshProfile();
     
-    // Load previous interviews
+    // Load ALL previous interviews
     const savedInterviews = localStorage.getItem(`interviews_${parsedUser.email}`);
     if (savedInterviews) {
       setPreviousInterviews(JSON.parse(savedInterviews));
     }
     
-    // Check backend status
     checkBackendStatus();
-    
     setLoading(false);
   }, [router, refreshProfile]);
 
-  // Check if backend is running
+  // ========== TAB SWITCH DETECTION ==========
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!isInterviewActive || interviewStep !== 'interview' || interviewTerminated) return;
+      
+      const isHidden = document.hidden;
+      
+      if (isHidden && visibilityRef.current) {
+        visibilityRef.current = false;
+        
+        setTabSwitchCount(prev => {
+          const newCount = prev + 1;
+          
+          if (newCount >= 3) {
+            setInterviewTerminated(true);
+            setShowTabWarning(false);
+            
+            const invalidAnswer = "INTERVIEW TERMINATED: Tab switching detected 3 times";
+            if (answerBoxRef.current) {
+              answerBoxRef.current.value = invalidAnswer;
+            }
+            
+            setTimeout(() => {
+              submitAnswer(true);
+            }, 1000);
+            
+            alert("Interview terminated due to multiple tab switches.");
+            
+          } else {
+            setShowTabWarning(true);
+            
+            if (warningTimeoutRef.current) {
+              clearTimeout(warningTimeoutRef.current);
+            }
+            warningTimeoutRef.current = setTimeout(() => {
+              setShowTabWarning(false);
+            }, 5000);
+          }
+          
+          return newCount;
+        });
+        
+      } else if (!isHidden && !visibilityRef.current) {
+        visibilityRef.current = true;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (warningTimeoutRef.current) {
+        clearTimeout(warningTimeoutRef.current);
+      }
+    };
+  }, [isInterviewActive, interviewStep, interviewTerminated]);
+
+  // ========== CAMERA FUNCTIONS ==========
+  const startCamera = async () => {
+    try {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        },
+        audio: true 
+      });
+      
+      setCameraStream(stream);
+      setIsCameraActive(true);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(e => console.error("Video play error:", e));
+      }
+      
+      setShowCamera(true);
+    } catch (err) {
+      console.error("Camera error:", err);
+      alert("Could not access camera/microphone. Please ensure permissions are granted.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => {
+        track.stop();
+      });
+      setCameraStream(null);
+      setIsCameraActive(false);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    }
+    setShowCamera(false);
+  };
+
+  const startVideoRecording = async () => {
+    if (!isCameraActive) {
+      await startCamera();
+      setTimeout(() => {
+        beginRecording();
+      }, 1000);
+    } else {
+      beginRecording();
+    }
+  };
+
+  const beginRecording = () => {
+    if (!cameraStream) {
+      alert("Camera not initialized. Please try again.");
+      return;
+    }
+    
+    try {
+      recordedChunksRef.current = [];
+      
+      const mediaRecorder = new MediaRecorder(cameraStream, {
+        mimeType: 'video/webm;codecs=vp9,opus',
+        videoBitsPerSecond: 2500000
+      });
+      
+      mediaRecorderRef.current = mediaRecorder;
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = () => {
+        const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        
+        const url = URL.createObjectURL(videoBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `interview_${skills[currentIndex]?.skill || 'answer'}_${Date.now()}.webm`;
+        a.click();
+        
+        const videoAnswer = `[VIDEO RECORDING: ${Math.floor(180 - recordingTimeLeft)} seconds] - Answer captured on video`;
+        if (answerBoxRef.current) {
+          answerBoxRef.current.value = videoAnswer;
+        }
+        
+        setTimeout(() => {
+          submitAnswer();
+        }, 1500);
+      };
+      
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTimeLeft(180);
+      
+      if (cameraTimerRef.current) {
+        clearInterval(cameraTimerRef.current);
+      }
+      
+      cameraTimerRef.current = setInterval(() => {
+        setRecordingTimeLeft(prev => {
+          if (prev <= 1) {
+            stopVideoRecording();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+    } catch (err) {
+      console.error("Recording error:", err);
+      alert("Failed to start recording. Please try again.");
+    }
+  };
+
+  const stopVideoRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    setIsRecording(false);
+    
+    if (cameraTimerRef.current) {
+      clearInterval(cameraTimerRef.current);
+      cameraTimerRef.current = null;
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const checkBackendStatus = async () => {
     try {
       const response = await fetch(`${BACKEND}/`, { 
         method: 'GET',
-        signal: AbortSignal.timeout(3000) // 3 second timeout
+        signal: AbortSignal.timeout(3000)
       });
       if (response.ok) {
-        setBackendStatus('✅ Backend is running');
+        setBackendStatus('✓ Backend is running');
       } else {
-        setBackendStatus('❌ Backend error');
+        setBackendStatus('✗ Backend error');
       }
     } catch (err) {
-      setBackendStatus('❌ Backend not running');
+      setBackendStatus('✗ Backend not running');
     }
   };
 
@@ -153,7 +372,7 @@ export default function Dashboard() {
     router.push('/login');
   };
 
-  // ========== SIMPLIFIED INTERVIEW FUNCTIONS ==========
+  // ========== INTERVIEW FUNCTIONS ==========
   const analyzeCV = async () => {
     const cv = cvFileRef.current?.files?.[0];
     if (!cv) {
@@ -163,15 +382,14 @@ export default function Dashboard() {
 
     setIsAnalyzing(true);
     const status = document.getElementById("interview-uploadStatus") as HTMLElement;
-    if (status) status.innerText = "🔍 Analyzing CV...";
+    if (status) status.innerText = "Analyzing CV...";
 
     const fd = new FormData();
     fd.append("cv", cv);
 
     try {
-      // Set timeout for the fetch request
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const res = await fetch(`${BACKEND}/upload-and-analyze`, {
         method: "POST",
@@ -186,20 +404,20 @@ export default function Dashboard() {
       }
 
       const data = await res.json();
-      console.log("Backend response:", data); // Debug log
+      console.log("Backend response:", data);
       
       const matchedSkills = data.matched_skills || [];
       
       if (matchedSkills.length === 0) {
         alert("No skills matched. Try another CV.");
-        if (status) status.innerText = "❌ No skills found";
+        if (status) status.innerText = "No skills found";
         setIsAnalyzing(false);
         return;
       }
 
       setSkills(matchedSkills);
       
-      const list = document.getElementById("interview-skillsList") as HTMLElement;
+      const list = document.getElementById("interview-skillsList");
       if (list) {
         list.innerHTML = "";
         matchedSkills.forEach((s: any) => {
@@ -211,17 +429,17 @@ export default function Dashboard() {
       }
 
       setInterviewStep('skills');
-      if (status) status.innerText = "✅ Analysis complete!";
+      if (status) status.innerText = "Analysis complete!";
     } catch (err: any) {
       console.error("CV Analysis error:", err);
       
       if (err.name === 'AbortError') {
         alert("Request timed out. The backend might be slow or not responding.");
       } else {
-        alert(`Backend error: ${err.message}\n\nMake sure backend is running:\ncd ai-interview-backend && python -m uvicorn app:app --reload --port 8000`);
+        alert(`Backend error: ${err.message}`);
       }
       
-      if (status) status.innerText = "❌ Failed to analyze CV";
+      if (status) status.innerText = "Failed to analyze CV";
     } finally {
       setIsAnalyzing(false);
     }
@@ -231,8 +449,12 @@ export default function Dashboard() {
     setCurrentIndex(0);
     setResults([]);
     setInterviewStep('interview');
+    setIsInterviewActive(true);
+    setTabSwitchCount(0);
+    setInterviewTerminated(false);
     
-    // Load first question
+    startAnswerTimer();
+    
     if (skills.length > 0) {
       const skill = skills[0]?.skill;
       setCurrentQuestion(`Tell me about your experience with ${skill}`);
@@ -241,34 +463,88 @@ export default function Dashboard() {
     }
   };
 
+  const startAnswerTimer = () => {
+    setAnswerTimer(180);
+    setTimerActive(true);
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    timerRef.current = setInterval(() => {
+      setAnswerTimer(prev => {
+        if (prev <= 1) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+          }
+          setTimerActive(false);
+          
+          if (answerBoxRef.current && answerBoxRef.current.value.trim() === '') {
+            answerBoxRef.current.value = "[NO ANSWER PROVIDED - TIME EXPIRED]";
+          }
+          
+          submitAnswer();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const stopAnswerTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setTimerActive(false);
+  };
+
+  const resetAnswerTimer = () => {
+    stopAnswerTimer();
+    startAnswerTimer();
+  };
+
   const startVoiceInput = () => {
     if (!("webkitSpeechRecognition" in window)) {
-      alert("🎤 Voice input only works in Chrome/Edge");
+      alert("Voice input only works in Chrome/Edge");
       return;
     }
     const recognition = new (window as any).webkitSpeechRecognition();
     recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    
     recognition.onstart = () => {
       if (answerBoxRef.current) {
-        answerBoxRef.current.value = "🎤 Listening...";
+        answerBoxRef.current.value = "Listening...";
       }
     };
+    
     recognition.onresult = (e: any) => {
       if (answerBoxRef.current && e.results[0][0].transcript) {
         answerBoxRef.current.value = e.results[0][0].transcript;
       }
     };
+    
     recognition.onerror = () => {
       if (answerBoxRef.current) {
         answerBoxRef.current.value = "Voice recognition failed. Please type your answer.";
       }
     };
+    
     recognition.start();
   };
 
-  const submitAnswer = async () => {
+  const submitAnswer = async (isTerminated = false) => {
+    stopAnswerTimer();
+    stopVideoRecording();
+    
     const answer = answerBoxRef.current?.value || '';
-    if (!answer.trim()) return alert('Please answer the question');
+    if (!answer.trim() && !isTerminated) {
+      alert('Please answer the question');
+      resetAnswerTimer();
+      return;
+    }
 
     try {
       const controller = new AbortController();
@@ -279,7 +555,9 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           question: currentQuestion, 
-          answer: answer 
+          answer: answer,
+          terminated: isTerminated,
+          tabSwitches: tabSwitchCount
         }),
         signal: controller.signal
       });
@@ -289,16 +567,18 @@ export default function Dashboard() {
       const data = await res.json();
       const e = data.evaluation;
 
+      const violationNote = isTerminated ? "\n\nINTERVIEW TERMINATED DUE TO MULTIPLE TAB SWITCHES" : 
+                           tabSwitchCount > 0 ? `\n\nWarning: Tab switched ${tabSwitchCount} time(s) during this answer` : "";
+
       const feedback = `Capability: ${e.capability}
 Confidence: ${e.confidence_level}
 
 Reasoning: ${e.reasoning}
 
-Ideal Answer: ${e.ideal_answer}`;
+Ideal Answer: ${e.ideal_answer}${violationNote}`;
       
       setFeedbackText(feedback);
 
-      // Save result
       const newResult = { 
         skill: skills[currentIndex]?.skill || 'Unknown', 
         capability: e.capability,
@@ -306,7 +586,10 @@ Ideal Answer: ${e.ideal_answer}`;
         reasoning: e.reasoning,
         ideal_answer: e.ideal_answer,
         question: currentQuestion,
-        answer: answer
+        answer: answer,
+        tabSwitches: tabSwitchCount,
+        terminated: isTerminated,
+        timestamp: new Date().toISOString()
       };
       
       setResults([...results, newResult]);
@@ -316,24 +599,25 @@ Ideal Answer: ${e.ideal_answer}`;
       console.error("Evaluation error:", err);
       
       if (err.name === 'AbortError') {
-        alert("Evaluation timed out. Using mock feedback.");
-        // Fallback to mock feedback
+        alert("Evaluation timed out. Using local feedback.");
         const mockFeedback = `Capability: medium
 Confidence: medium
 
-Reasoning: Your answer was received but could not be evaluated by AI.
+Reasoning: Your answer was received but could not be evaluated.
 
-Ideal Answer: The AI evaluation service is currently unavailable.`;
+Ideal Answer: The evaluation service is currently unavailable.`;
         setFeedbackText(mockFeedback);
         
         const mockResult = { 
           skill: skills[currentIndex]?.skill || 'Unknown', 
           capability: 'medium',
           confidence: 'medium',
-          reasoning: 'AI evaluation service unavailable',
+          reasoning: 'Evaluation service unavailable',
           ideal_answer: 'Service temporarily down',
           question: currentQuestion,
-          answer: answer
+          answer: answer,
+          tabSwitches: tabSwitchCount,
+          terminated: isTerminated
         };
         
         setResults([...results, mockResult]);
@@ -345,12 +629,16 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
   };
 
   const nextSkill = () => {
-    if (currentIndex + 1 < skills.length) {
+    if (currentIndex + 1 < skills.length && !interviewTerminated) {
       setCurrentIndex(currentIndex + 1);
       setCurrentQuestion(`Tell me about your experience with ${skills[currentIndex + 1]?.skill}`);
       const title = document.getElementById("interview-skillTitle") as HTMLElement;
       if (title) title.innerText = `Skill ${currentIndex + 2}/${skills.length}: ${skills[currentIndex + 1]?.skill}`;
       if (answerBoxRef.current) answerBoxRef.current.value = '';
+      
+      setTabSwitchCount(0);
+      resetAnswerTimer();
+      
       setInterviewStep('interview');
     } else {
       saveInterviewResults();
@@ -360,36 +648,89 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
   const saveInterviewResults = () => {
     if (!user?.email) return;
     
+    stopCamera();
+    
     const interviewData = {
       id: Date.now(),
       date: new Date().toISOString(),
       skills: skills.map(s => s.skill),
       results: results,
       overallScore: calculateOverallScore(results),
-      feedback: feedbackText
+      feedback: feedbackText,
+      terminated: interviewTerminated,
+      totalTabSwitches: results.reduce((sum, r) => sum + (r.tabSwitches || 0), 0)
     };
 
-    // Save to localStorage
+    // Get ALL existing interviews
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
+    
+    // Add new interview
     savedInterviews.push(interviewData);
+    
+    // Store ALL interviews back to localStorage
     localStorage.setItem(`interviews_${user.email}`, JSON.stringify(savedInterviews));
+    
+    // Update state with ALL interviews
     setPreviousInterviews(savedInterviews);
     
     setInterviewStep('summary');
+    setIsInterviewActive(false);
   };
 
   const calculateOverallScore = (results: any[]) => {
     if (results.length === 0) return 0;
-    const scores: Record<string, number> = { strong: 3, medium: 2, weak: 1 };
-    const total = results.reduce((sum, r) => sum + (scores[r.capability?.toLowerCase()] || 1), 0);
-    return Math.round((total / (results.length * 3)) * 100);
+    
+    const baseScores: Record<string, number> = { strong: 3, medium: 2, weak: 1 };
+    let total = results.reduce((sum, r) => sum + (baseScores[r.capability?.toLowerCase()] || 1), 0);
+    
+    const maxPossible = results.length * 3;
+    
+    const totalTabSwitches = results.reduce((sum, r) => sum + (r.tabSwitches || 0), 0);
+    const penalty = Math.min(totalTabSwitches * 5, 30);
+    
+    const rawPercentage = (total / maxPossible) * 100;
+    const finalPercentage = Math.max(0, rawPercentage - penalty);
+    
+    return Math.round(finalPercentage);
   };
 
   const viewInterviewFeedback = (interview: any) => {
     setResults(interview.results || []);
     setSkills((interview.skills || []).map((s: string) => ({ skill: s })));
+    setInterviewTerminated(interview.terminated || false);
     setInterviewStep('summary');
   };
+
+  const deleteInterview = (index: number) => {
+    if (!user?.email || !confirm('Delete this interview record?')) return;
+    
+    const updated = [...previousInterviews];
+    updated.splice(index, 1);
+    
+    localStorage.setItem(`interviews_${user.email}`, JSON.stringify(updated));
+    setPreviousInterviews(updated);
+  };
+
+  const clearAllInterviews = () => {
+    if (!user?.email || !confirm('Clear all interview history?')) return;
+    
+    localStorage.removeItem(`interviews_${user.email}`);
+    setPreviousInterviews([]);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      if (cameraTimerRef.current) {
+        clearInterval(cameraTimerRef.current);
+      }
+    };
+  }, [cameraStream]);
 
   if (loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -403,66 +744,185 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
         .card, .interview-card { 
           background: white; 
           padding: 30px; 
-          border-radius: 12px; 
-          box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+          border-radius: 8px; 
+          box-shadow: 0 2px 10px rgba(0,0,0,0.05); 
           margin-bottom: 20px; 
+          border: 1px solid #e5e7eb;
         }
         .hidden { display: none !important; }
         .skill-tag { 
           display: inline-block; 
-          background: linear-gradient(135deg, #e0e7ff, #ecfeff); 
+          background: #e0e7ff; 
           color: #1e3a8a; 
-          padding: 8px 16px; 
-          border-radius: 999px; 
-          margin: 6px; 
-          font-weight: 600; 
+          padding: 6px 14px; 
+          border-radius: 16px; 
+          margin: 4px; 
+          font-size: 14px;
+          font-weight: 500; 
         }
-        .interview-btn { 
-          padding: 12px 24px; 
-          border-radius: 8px; 
+        .btn { 
+          padding: 10px 20px; 
+          border-radius: 6px; 
           border: none; 
           background: #3b82f6; 
           color: white; 
-          font-size: 16px; 
+          font-size: 14px; 
+          font-weight: 500;
           cursor: pointer; 
-          margin: 10px; 
+          margin: 5px; 
+          transition: background 0.2s;
         }
-        .interview-textarea { 
+        .btn:hover { background: #2563eb; }
+        .btn-secondary { background: #6b7280; }
+        .btn-secondary:hover { background: #4b5563; }
+        .btn-success { background: #10b981; }
+        .btn-success:hover { background: #059669; }
+        .btn-danger { background: #ef4444; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .textarea { 
           width: 100%; 
           height: 140px; 
           padding: 12px; 
-          border-radius: 8px; 
+          border-radius: 6px; 
           border: 1px solid #d1d5db; 
           font-family: inherit; 
           resize: vertical; 
           margin: 15px 0; 
+          font-size: 14px;
+        }
+        .textarea:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
         }
         .backend-status {
           padding: 8px 16px;
-          border-radius: 8px;
+          border-radius: 6px;
           margin: 10px 0;
           font-size: 14px;
         }
         .status-good { background: #d1fae5; color: #065f46; }
         .status-bad { background: #fee2e2; color: #991b1b; }
         .status-checking { background: #fef3c7; color: #92400e; }
+        .camera-container {
+          width: 100%;
+          max-width: 640px;
+          margin: 20px auto;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          background: #1e293b;
+          position: relative;
+        }
+        .camera-container video {
+          width: 100%;
+          display: block;
+        }
+        .timer-display {
+          font-size: 20px;
+          font-weight: 600;
+          text-align: center;
+          padding: 8px;
+          background: #1e293b;
+          color: white;
+          border-radius: 6px;
+          margin: 10px 0;
+        }
+        .recording-indicator {
+          display: inline-block;
+          width: 10px;
+          height: 10px;
+          background: #ef4444;
+          border-radius: 50%;
+          margin-right: 6px;
+          animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+          0% { opacity: 1; }
+          50% { opacity: 0.5; }
+          100% { opacity: 1; }
+        }
+        .warning-banner {
+          background: #fee2e2;
+          color: #991b1b;
+          padding: 12px;
+          border-radius: 6px;
+          margin: 10px 0;
+          border: 1px solid #ef4444;
+          text-align: center;
+          font-weight: 500;
+          font-size: 14px;
+        }
+        .termination-banner {
+          background: #7f1d1d;
+          color: white;
+          padding: 16px;
+          border-radius: 6px;
+          margin: 10px 0;
+          text-align: center;
+          font-weight: 500;
+          font-size: 16px;
+        }
+        .tab-switch-counter {
+          font-size: 13px;
+          color: #6b7280;
+          text-align: right;
+          margin: 5px 0;
+        }
+        .nav-tab {
+          padding: 10px 20px;
+          background: #e5e7eb;
+          color: #374151;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+        .nav-tab.active {
+          background: #3b82f6;
+          color: white;
+        }
+        .section-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: #1e293b;
+          margin-bottom: 20px;
+        }
+        .result-item {
+          padding: 15px;
+          margin: 10px 0;
+          background: white;
+          border-radius: 6px;
+          border: 1px solid #e5e7eb;
+        }
+        .interview-history {
+          max-height: 500px;
+          overflow-y: auto;
+          padding: 5px;
+        }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 15px;
+          margin-top: 20px;
+        }
       ` }} />
 
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <h1 style={{ fontSize: '28px', color: '#1e293b' }}>Welcome, <strong>{user?.name}</strong></h1>
+          <h1 style={{ fontSize: '24px', fontWeight: '600', color: '#1e293b' }}>
+            Welcome, <span style={{ color: '#3b82f6' }}>{user?.name}</span>
+          </h1>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button 
               onClick={() => setCurrentTab('profile')}
-              style={{ 
-                padding: '12px 24px', 
-                background: currentTab === 'profile' ? '#10b981' : '#e5e7eb', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '8px',
-                cursor: 'pointer'
-              }}
+              className={`nav-tab ${currentTab === 'profile' ? 'active' : ''}`}
             >
               Profile
             </button>
@@ -471,20 +931,13 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
                 setCurrentTab('interview'); 
                 setInterviewStep('start'); 
               }}
-              style={{ 
-                padding: '12px 24px', 
-                background: currentTab === 'interview' ? '#3b82f6' : '#e5e7eb', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '8px',
-                cursor: 'pointer'
-              }}
+              className={`nav-tab ${currentTab === 'interview' ? 'active' : ''}`}
             >
-              🤖 AI Interview
+              Interview
             </button>
             <button 
               onClick={logout}
-              style={{ padding: '12px 24px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+              className="btn btn-danger"
             >
               Logout
             </button>
@@ -495,72 +948,54 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
         {currentTab === 'interview' && (
           <div style={{ marginBottom: '20px' }}>
             <div className={`backend-status ${
-              backendStatus.includes('✅') ? 'status-good' : 
-              backendStatus.includes('❌') ? 'status-bad' : 'status-checking'
+              backendStatus.includes('✓') ? 'status-good' : 
+              backendStatus.includes('✗') ? 'status-bad' : 'status-checking'
             }`}>
               {backendStatus}
             </div>
           </div>
         )}
 
-        {/* ========== YOUR ORIGINAL PROFILE TAB ========== */}
+        {/* PROFILE TAB */}
         {currentTab === 'profile' && (
           <div className="card">
-            <h2 style={{ marginTop: 0, color: '#334155' }}>Profile</h2>
-            <p><strong>Email:</strong> {user?.email}</p>
+            <h2 className="section-title">Profile</h2>
+            <p style={{ marginBottom: '15px' }}><strong>Email:</strong> {user?.email}</p>
             
             {profile?.resume ? (
               <div>
-                <p style={{ color: '#059669' }}>✅ Resume uploaded</p>
+                <p style={{ color: '#059669' }}>✓ Resume uploaded</p>
                 <a href={profile.resume} target="_blank" style={{ 
                   display: 'inline-block',
-                  padding: '10px 20px', 
+                  padding: '8px 16px', 
                   background: '#3b82f6', 
                   color: 'white', 
                   textDecoration: 'none', 
-                  borderRadius: '8px',
-                  margin: '10px 0'
+                  borderRadius: '6px',
+                  margin: '10px 0',
+                  fontSize: '14px'
                 }}>
-                  📄 View PDF
+                  View PDF
                 </a>
-                <br/><br/>
-                <button onClick={parseResume} disabled={parsing} style={{ 
-                  padding: '12px 24px', 
-                  background: parsing ? '#d1d5db' : '#8b5cf6', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '8px',
-                  marginRight: '10px'
-                }}>
-                  {parsing ? 'Parsing...' : '🔍 Parse Resume'}
+                <br/>
+                <button onClick={parseResume} disabled={parsing} className="btn" style={{ background: parsing ? '#d1d5db' : '#8b5cf6', marginRight: '10px' }}>
+                  {parsing ? 'Parsing...' : 'Parse Resume'}
                 </button>
-                <button onClick={deleteResume} style={{ 
-                  padding: '12px 24px', 
-                  background: '#ef4444', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '8px' 
-                }}>
-                  🗑️ Delete
+                <button onClick={deleteResume} className="btn btn-danger">
+                  Delete
                 </button>
               </div>
             ) : (
               <div>
                 <input ref={fileInputRef} type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ 
                   width: '100%', 
-                  padding: '12px', 
+                  padding: '8px', 
                   marginBottom: '15px', 
-                  border: '2px dashed #d1d5db',
-                  borderRadius: '8px'
+                  border: '1px dashed #d1d5db',
+                  borderRadius: '6px'
                 }} />
-                <button onClick={uploadResume} disabled={uploading || !file} style={{ 
-                  padding: '12px 24px', 
-                  background: uploading || !file ? '#d1d5db' : '#10b981', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '8px' 
-                }}>
-                  {uploading ? 'Uploading...' : '📤 Upload Resume'}
+                <button onClick={uploadResume} disabled={uploading || !file} className="btn btn-success">
+                  {uploading ? 'Uploading...' : 'Upload Resume'}
                 </button>
               </div>
             )}
@@ -568,13 +1003,10 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
             {profile?.parsedResume && (
               <>
                 <hr style={{ margin: '30px 0', border: 'none', height: '1px', background: '#e2e8f0' }} />
-                <h3 style={{ color: '#475569' }}>Skills Extracted</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#475569' }}>Skills Extracted</h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '15px' }}>
                   {profile.parsedResume.skills?.slice(0, 12).map((skill: string, i: number) => (
-                    <span key={i} style={{
-                      padding: '6px 12px', background: '#dbeafe', color: '#1e40af',
-                      borderRadius: '20px', fontSize: '14px', fontWeight: '500'
-                    }}>
+                    <span key={i} className="skill-tag">
                       {skill}
                     </span>
                   ))}
@@ -584,81 +1016,143 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
           </div>
         )}
 
-        {/* ========== AI INTERVIEW TAB ========== */}
+        {/* INTERVIEW TAB */}
         {currentTab === 'interview' && (
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-            {/* START SCREEN */}
+            {/* START SCREEN - WITH ALL INTERVIEWS */}
             {interviewStep === 'start' && (
               <div className="interview-card" style={{ textAlign: 'center' }}>
-                <h2 style={{ color: '#3b82f6' }}>🤖 AI Technical Interview</h2>
-                <p style={{ fontSize: '18px', color: '#6b7280' }}>Upload CV → Match skills → Unlimited questions → Instant feedback + voice</p>
+                <h2 className="section-title">Technical Interview</h2>
+                <p style={{ fontSize: '16px', color: '#6b7280' }}>Upload CV → Match skills → Answer questions → Get feedback</p>
                 
                 {previousInterviews.length > 0 && (
                   <div style={{ marginTop: '30px', textAlign: 'left' }}>
-                    <h3 style={{ color: '#475569' }}>📊 Previous Interviews</h3>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginTop: '15px' }}>
-                      {previousInterviews.slice().reverse().slice(0, 3).map((interview: any) => (
-                        <div key={interview.id} style={{
-                          background: '#f0f9ff',
-                          padding: '20px',
-                          borderRadius: '12px',
-                          border: '1px solid #e0f2fe',
-                          minWidth: '250px',
-                          flex: '1 1 250px'
-                        }}>
-                          <p><strong>Date:</strong> {new Date(interview.date).toLocaleDateString()}</p>
-                          <p><strong>Score:</strong> {interview.overallScore}%</p>
-                          <p><strong>Skills:</strong> {interview.skills?.slice(0, 2).join(', ')}...</p>
-                          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                            <button 
-                              onClick={() => viewInterviewFeedback(interview)}
-                              style={{ 
-                                padding: '8px 16px', 
-                                background: '#10b981', 
-                                color: 'white', 
-                                border: 'none', 
-                                borderRadius: '6px', 
-                                cursor: 'pointer',
-                                flex: 1
-                              }}
-                            >
-                              View Feedback
-                            </button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                      <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#475569' }}>
+                        Interview History ({previousInterviews.length})
+                      </h3>
+                      <button 
+                        onClick={clearAllInterviews}
+                        className="btn btn-secondary"
+                        style={{ padding: '6px 16px', fontSize: '13px' }}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    
+                    <div className="interview-history">
+                      {previousInterviews.slice().reverse().map((interview: any, index: number) => {
+                        const originalIndex = previousInterviews.length - 1 - index;
+                        return (
+                          <div key={interview.id || index} style={{
+                            background: '#f8fafc',
+                            padding: '16px',
+                            borderRadius: '6px',
+                            border: '1px solid #e5e7eb',
+                            marginBottom: '10px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '15px'
+                          }}>
+                            <div style={{ flex: 2, minWidth: '250px' }}>
+                              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <span style={{ fontSize: '14px', color: '#4b5563' }}>
+                                  <strong>Date:</strong> {new Date(interview.date).toLocaleDateString()} {new Date(interview.date).toLocaleTimeString()}
+                                </span>
+                                <span style={{ 
+                                  padding: '4px 12px', 
+                                  background: interview.terminated ? '#fee2e2' : '#d1fae5',
+                                  color: interview.terminated ? '#991b1b' : '#065f46',
+                                  borderRadius: '4px',
+                                  fontWeight: '500',
+                                  fontSize: '13px'
+                                }}>
+                                  Score: {interview.overallScore || 0}%
+                                </span>
+                                {interview.terminated && (
+                                  <span style={{ 
+                                    padding: '4px 12px', 
+                                    background: '#fee2e2',
+                                    color: '#991b1b',
+                                    borderRadius: '4px',
+                                    fontSize: '12px'
+                                  }}>
+                                    Terminated
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ marginTop: '8px' }}>
+                                <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                                  <strong>Skills:</strong> {interview.skills?.slice(0, 5).join(', ')}{interview.skills?.length > 5 ? '...' : ''}
+                                </span>
+                              </div>
+                              {interview.totalTabSwitches > 0 && (
+                                <div style={{ marginTop: '4px', fontSize: '12px', color: '#ef4444' }}>
+                                  Tab switches: {interview.totalTabSwitches}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button 
+                                onClick={() => viewInterviewFeedback(interview)}
+                                className="btn btn-success" 
+                                style={{ padding: '6px 16px', fontSize: '13px' }}
+                              >
+                                View Details
+                              </button>
+                              <button 
+                                onClick={() => deleteInterview(originalIndex)}
+                                className="btn btn-danger"
+                                style={{ padding: '6px 12px', fontSize: '13px' }}
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Summary Statistics */}
+                    <div className="stats-grid">
+                      <div style={{ padding: '15px', background: '#f1f5f9', borderRadius: '6px' }}>
+                        <div style={{ fontSize: '13px', color: '#6b7280' }}>Total Interviews</div>
+                        <div style={{ fontSize: '24px', fontWeight: '600', color: '#1e293b' }}>{previousInterviews.length}</div>
+                      </div>
+                      <div style={{ padding: '15px', background: '#f1f5f9', borderRadius: '6px' }}>
+                        <div style={{ fontSize: '13px', color: '#6b7280' }}>Average Score</div>
+                        <div style={{ fontSize: '24px', fontWeight: '600', color: '#1e293b' }}>
+                          {Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length)}%
                         </div>
-                      ))}
+                      </div>
+                      <div style={{ padding: '15px', background: '#f1f5f9', borderRadius: '6px' }}>
+                        <div style={{ fontSize: '13px', color: '#6b7280' }}>Terminated</div>
+                        <div style={{ fontSize: '24px', fontWeight: '600', color: '#ef4444' }}>
+                          {previousInterviews.filter(i => i.terminated).length}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
                 
                 <div style={{ marginTop: '30px' }}>
                   <button 
-                    className="interview-btn" 
+                    className="btn btn-success" 
                     onClick={() => setInterviewStep('upload')}
-                    style={{ 
-                      background: '#10b981', 
-                      padding: '16px 40px', 
-                      fontSize: '18px',
-                      margin: '10px'
-                    }}
+                    style={{ padding: '12px 32px', fontSize: '16px' }}
                   >
-                    🚀 Start New Interview
+                    Start New Interview
                   </button>
                   <br/>
                   <button 
                     onClick={checkBackendStatus}
-                    style={{ 
-                      padding: '8px 16px', 
-                      background: '#e5e7eb', 
-                      color: '#374151', 
-                      border: 'none', 
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      marginTop: '10px'
-                    }}
+                    className="btn btn-secondary" 
+                    style={{ marginTop: '15px' }}
                   >
-                    🔄 Check Backend Status
+                    Check Backend Status
                   </button>
                 </div>
               </div>
@@ -667,9 +1161,9 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
             {/* UPLOAD STEP */}
             {interviewStep === 'upload' && (
               <div className="interview-card">
-                <h3>📤 Upload Your CV (PDF or DOCX)</h3>
-                <p style={{ color: '#6b7280', marginBottom: '20px' }}>
-                  The AI will analyze your CV and extract relevant skills for the interview.
+                <h3 className="section-title" style={{ fontSize: '18px' }}>Upload Your CV</h3>
+                <p style={{ color: '#6b7280', marginBottom: '20px', fontSize: '14px' }}>
+                  The system will analyze your CV and extract relevant skills for the interview. (PDF or DOCX)
                 </p>
                 
                 <input 
@@ -678,40 +1172,40 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
                   accept=".pdf,.docx" 
                   style={{ 
                     width: '100%', 
-                    padding: '20px', 
-                    margin: '20px 0', 
-                    border: '2px dashed #3b82f6', 
-                    borderRadius: '8px',
-                    background: '#eff6ff',
+                    padding: '12px', 
+                    margin: '15px 0', 
+                    border: '1px dashed #3b82f6', 
+                    borderRadius: '6px',
+                    background: '#f8fafc',
                     cursor: 'pointer'
                   }} 
                 />
                 
                 <div id="interview-uploadStatus" style={{ 
-                  padding: '10px', 
+                  padding: '8px', 
                   margin: '10px 0',
-                  borderRadius: '6px',
-                  background: '#f8fafc'
+                  borderRadius: '4px',
+                  background: '#f8fafc',
+                  fontSize: '14px',
+                  color: '#6b7280'
                 }}></div>
                 
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button 
-                    className="interview-btn" 
+                    className="btn btn-secondary" 
                     onClick={() => setInterviewStep('start')}
-                    style={{ background: '#6b7280' }}
                   >
-                    ← Back
+                    Back
                   </button>
                   <button 
-                    className="interview-btn" 
+                    className="btn" 
                     onClick={analyzeCV}
                     disabled={isAnalyzing}
                     style={{ 
-                      background: isAnalyzing ? '#d1d5db' : '#10b981',
-                      opacity: isAnalyzing ? 0.7 : 1
+                      background: isAnalyzing ? '#d1d5db' : '#3b82f6',
                     }}
                   >
-                    {isAnalyzing ? '🔍 Analyzing...' : '🔍 Analyze Skills'}
+                    {isAnalyzing ? 'Analyzing...' : 'Analyze Skills'}
                   </button>
                 </div>
               </div>
@@ -720,32 +1214,31 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
             {/* SKILLS STEP */}
             {interviewStep === 'skills' && (
               <div className="interview-card">
-                <h3 style={{ color: '#10b981' }}>✅ Skills Found In Your CV</h3>
+                <h3 className="section-title" style={{ fontSize: '18px', color: '#10b981' }}>Skills Found In Your CV</h3>
                 <div id="interview-skillsList" style={{ 
                   display: 'flex', 
                   flexWrap: 'wrap', 
-                  gap: '10px', 
+                  gap: '8px', 
                   margin: '20px 0', 
                   padding: '20px',
-                  background: '#f0fdf4',
-                  borderRadius: '12px',
-                  minHeight: '80px'
+                  background: '#f8fafc',
+                  borderRadius: '6px',
+                  minHeight: '80px',
+                  border: '1px solid #e5e7eb'
                 }}></div>
                 
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button 
-                    className="interview-btn" 
+                    className="btn btn-secondary" 
                     onClick={() => setInterviewStep('upload')}
-                    style={{ background: '#6b7280' }}
                   >
-                    ← Back
+                    Back
                   </button>
                   <button 
-                    className="interview-btn" 
+                    className="btn btn-success" 
                     onClick={startInterview}
-                    style={{ background: '#8b5cf6' }}
                   >
-                    🚀 Start Interview
+                    Start Interview
                   </button>
                 </div>
               </div>
@@ -754,76 +1247,182 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
             {/* INTERVIEW STEP */}
             {interviewStep === 'interview' && (
               <div className="interview-card">
-                <h4 id="interview-skillTitle" style={{ color: '#059669', fontSize: '18px', marginBottom: '20px' }}>
+                {/* Tab Switch Warning Banner */}
+                {showTabWarning && (
+                  <div className="warning-banner">
+                    Warning {tabSwitchCount}/3: Tab switching detected! Interview will terminate after 3 violations.
+                  </div>
+                )}
+
+                {/* Termination Banner */}
+                {interviewTerminated && (
+                  <div className="termination-banner">
+                    Interview Terminated - Multiple tab switching detected
+                  </div>
+                )}
+
+                {/* Tab Switch Counter */}
+                <div className="tab-switch-counter">
+                  Tab switches: {tabSwitchCount}/3
+                </div>
+
+                {/* Timer Display */}
+                <div className="timer-display">
+                  {isRecording && <span className="recording-indicator"></span>}
+                  Time Remaining: {formatTime(answerTimer)}
+                </div>
+
+                <h4 id="interview-skillTitle" style={{ color: '#059669', fontSize: '16px', fontWeight: '600', marginBottom: '20px' }}>
                   Skill {currentIndex + 1}/{skills.length}: {skills[currentIndex]?.skill || 'Loading...'}
                 </h4>
                 
                 <div style={{ 
                   background: '#f8fafc', 
-                  padding: '25px', 
-                  borderRadius: '12px', 
+                  padding: '20px', 
+                  borderRadius: '6px', 
                   marginBottom: '20px',
                   border: '1px solid #e5e7eb'
                 }}>
-                  <h4 style={{ marginTop: 0, color: '#334155' }}>Question:</h4>
+                  <h4 style={{ marginTop: 0, color: '#334155', fontSize: '14px', fontWeight: '600' }}>Question:</h4>
                   <p id="interview-questionText" style={{ 
-                    fontSize: '18px', 
-                    lineHeight: '1.6',
-                    color: '#1f2937'
+                    fontSize: '16px', 
+                    lineHeight: '1.5',
+                    color: '#1f2937',
+                    margin: '10px 0 0 0'
                   }}>
                     {currentQuestion || "Loading question..."}
                   </p>
                 </div>
+
+                {/* Camera Section */}
+                {showCamera && (
+                  <div className="camera-container">
+                    <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      playsInline
+                      muted
+                    />
+                    {isRecording && (
+                      <div style={{ 
+                        position: 'absolute', 
+                        bottom: '10px', 
+                        left: '10px',
+                        background: 'rgba(0,0,0,0.7)',
+                        color: 'white',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        fontSize: '14px'
+                      }}>
+                        REC {formatTime(recordingTimeLeft)}
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <textarea 
                   ref={answerBoxRef} 
-                  className="interview-textarea" 
-                  placeholder="Type your answer here or use voice input..."
+                  className="textarea" 
+                  placeholder="Type your answer here or use voice/video input..."
+                  disabled={interviewTerminated}
                 />
                 
-                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   <button 
-                    className="interview-btn" 
+                    className="btn" 
                     onClick={startVoiceInput}
                     style={{ background: '#8b5cf6' }}
+                    disabled={interviewTerminated}
                   >
-                    🎤 Voice Input
+                    Voice Input
                   </button>
+                  
+                  {!showCamera ? (
+                    <button 
+                      className="btn btn-danger" 
+                      onClick={() => startVideoRecording()}
+                      disabled={interviewTerminated}
+                    >
+                      Start Video Recording
+                    </button>
+                  ) : (
+                    <button 
+                      className="btn" 
+                      onClick={isRecording ? stopVideoRecording : () => startVideoRecording()}
+                      style={{ background: isRecording ? '#ef4444' : '#10b981' }}
+                      disabled={interviewTerminated}
+                    >
+                      {isRecording ? 'Stop Recording' : 'Record Answer'}
+                    </button>
+                  )}
+                  
                   <button 
-                    className="interview-btn" 
-                    onClick={submitAnswer}
-                    style={{ background: '#10b981' }}
+                    className="btn btn-success" 
+                    onClick={() => submitAnswer()}
+                    disabled={interviewTerminated}
                   >
-                    📤 Submit Answer
+                    Submit Answer
                   </button>
                 </div>
+
+                {/* Camera toggle */}
+                {!showCamera && !isRecording && (
+                  <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                    <button 
+                      onClick={() => setShowCamera(true)}
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        color: '#6b7280', 
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        fontSize: '13px'
+                      }}
+                    >
+                      Show camera preview
+                    </button>
+                  </div>
+                )}
+                
+                {showCamera && !isRecording && (
+                  <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                    <button 
+                      onClick={stopCamera}
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: '13px' }}
+                    >
+                      Hide Camera
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* FEEDBACK STEP */}
             {interviewStep === 'feedback' && (
               <div className="interview-card">
-                <h3 style={{ color: '#8b5cf6' }}>🤖 AI Feedback</h3>
+                <h3 className="section-title" style={{ fontSize: '18px' }}>AI Feedback</h3>
                 
                 <div style={{ 
-                  background: '#f0f9ff', 
-                  padding: '25px', 
-                  borderRadius: '12px', 
+                  background: '#f8fafc', 
+                  padding: '20px', 
+                  borderRadius: '6px', 
                   whiteSpace: 'pre-wrap',
                   maxHeight: '400px',
                   overflowY: 'auto',
                   marginBottom: '20px',
-                  border: '1px solid #e0f2fe'
+                  border: '1px solid #e5e7eb',
+                  fontSize: '14px',
+                  lineHeight: '1.6'
                 }}>
                   {feedbackText || "Loading feedback..."}
                 </div>
                 
                 <button 
-                  className="interview-btn" 
+                  className="btn" 
                   onClick={nextSkill}
-                  style={{ background: '#3b82f6' }}
                 >
-                  {currentIndex + 1 < skills.length ? '➡️ Next Skill' : '📊 Finish Interview'}
+                  {currentIndex + 1 < skills.length && !interviewTerminated ? 'Next Skill' : 'Finish Interview'}
                 </button>
               </div>
             )}
@@ -831,84 +1430,99 @@ Ideal Answer: The AI evaluation service is currently unavailable.`;
             {/* SUMMARY STEP */}
             {interviewStep === 'summary' && (
               <div className="interview-card">
-                <h2 style={{ color: '#10b981', textAlign: 'center' }}>🎉 Interview Complete!</h2>
+                <h2 className="section-title" style={{ textAlign: 'center', color: interviewTerminated ? '#ef4444' : '#10b981' }}>
+                  {interviewTerminated ? 'Interview Terminated' : 'Interview Complete'}
+                </h2>
                 
                 {/* Overall Score */}
                 <div style={{ 
-                  background: 'linear-gradient(135deg, #ecfeff, #f0fdf4)', 
-                  padding: '30px', 
-                  borderRadius: '12px', 
+                  background: interviewTerminated ? '#fee2e2' : '#f0fdf4', 
+                  padding: '24px', 
+                  borderRadius: '6px', 
                   margin: '20px 0',
                   textAlign: 'center',
-                  border: '1px solid #a7f3d0'
+                  border: `1px solid ${interviewTerminated ? '#ef4444' : '#a7f3d0'}`
                 }}>
-                  <h3 style={{ color: '#059669', margin: 0 }}>Overall Score: {calculateOverallScore(results)}%</h3>
+                  <h3 style={{ color: interviewTerminated ? '#991b1b' : '#059669', margin: 0, fontSize: '20px' }}>
+                    Overall Score: {calculateOverallScore(results)}%
+                  </h3>
+                  {interviewTerminated && (
+                    <p style={{ color: '#991b1b', marginTop: '10px', fontWeight: '500', fontSize: '14px' }}>
+                      Interview was terminated due to multiple tab switches
+                    </p>
+                  )}
                 </div>
 
                 {/* Results Summary */}
                 <div style={{ marginBottom: '30px' }}>
-                  <h4 style={{ color: '#475569' }}>📊 Skill Performance</h4>
+                  <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#475569' }}>Skill Performance</h4>
                   <div style={{ 
                     background: '#f8fafc', 
-                    padding: '20px', 
-                    borderRadius: '8px',
+                    padding: '15px', 
+                    borderRadius: '6px',
                     maxHeight: '300px',
-                    overflowY: 'auto'
+                    overflowY: 'auto',
+                    border: '1px solid #e5e7eb'
                   }}>
                     {results.length > 0 ? (
                       results.map((r, i) => (
-                        <div key={i} style={{ 
-                          padding: '15px', 
-                          margin: '10px 0', 
-                          background: 'white', 
-                          borderRadius: '8px',
+                        <div key={i} className="result-item" style={{ 
                           borderLeft: `4px solid ${
                             r.capability === 'strong' ? '#10b981' : 
                             r.capability === 'medium' ? '#f59e0b' : '#ef4444'
                           }`
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong style={{ fontSize: '16px' }}>{r.skill}</strong>
+                            <strong style={{ fontSize: '14px' }}>{r.skill}</strong>
                             <span style={{ 
-                              padding: '5px 15px', 
+                              padding: '4px 12px', 
                               background: r.capability === 'strong' ? '#d1fae5' : 
                                         r.capability === 'medium' ? '#fef3c7' : '#fee2e2',
                               color: r.capability === 'strong' ? '#065f46' : 
                                     r.capability === 'medium' ? '#92400e' : '#991b1b',
-                              borderRadius: '20px',
-                              fontWeight: 'bold',
-                              fontSize: '14px'
+                              borderRadius: '4px',
+                              fontWeight: '500',
+                              fontSize: '12px'
                             }}>
                               {r.capability?.toUpperCase() || 'UNKNOWN'}
                             </span>
                           </div>
+                          {r.tabSwitches > 0 && (
+                            <p style={{ marginTop: '8px', fontSize: '12px', color: '#ef4444' }}>
+                              Tab switches during this answer: {r.tabSwitches}
+                            </p>
+                          )}
                           {r.reasoning && (
-                            <p style={{ marginTop: '10px', fontSize: '14px', color: '#6b7280' }}>
+                            <p style={{ marginTop: '10px', fontSize: '13px', color: '#6b7280' }}>
                               {r.reasoning}
                             </p>
                           )}
                         </div>
                       ))
                     ) : (
-                      <p style={{ textAlign: 'center', color: '#6b7280' }}>No results available</p>
+                      <p style={{ textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>No results available</p>
                     )}
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
                   <button 
-                    className="interview-btn" 
-                    onClick={() => setInterviewStep('start')}
-                    style={{ background: '#6b7280' }}
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      setInterviewStep('start');
+                      stopCamera();
+                    }}
                   >
-                    🏠 Back to Dashboard
+                    Back to Dashboard
                   </button>
                   <button 
-                    className="interview-btn" 
-                    onClick={() => setInterviewStep('upload')}
-                    style={{ background: '#3b82f6' }}
+                    className="btn btn-success" 
+                    onClick={() => {
+                      setInterviewStep('upload');
+                      stopCamera();
+                    }}
                   >
-                    🔄 Retake Interview
+                    New Interview
                   </button>
                 </div>
               </div>

@@ -21,17 +21,17 @@
     "resume": "/uploads/resumes/User1_gmail_com.pdf",
     "parsedResume": {
       "skills": [
-        "git",
+        "c\\+",
         "js"
       ],
       "method": "advanced-rules",
-      "textPreview": "%pdf-1.5 % 3 0 obj << /linearized 1 /l 64558 /h [ 2630 133 ] /o 8 /e 63966 /n 1 /t 64277 >> endobj 4 0 obj << /type /xref /length 68 /filter /flatedecode /decodeparms << /columns 4 /predictor 12 >> /w [ 1 2 1 ] /index [ 3 38 ] /info 1 0 r /root 5 0 r /size 41 /prev 64278 /id [<d652d017d5611fcc27a235902a646c50><a17ff42dd6f63925338480d2f5ea7c3a>] >> stream x cbd g`b`8 $ ]a )@ }* $ a\\ \\ h q ( h > e`b r ic` l k endstream endobj 5 0 obj << /names 40 0 r /openaction 18 0 r /pagelabels << /nums [ 0 << ",
-      "rawLength": 64558,
+      "textPreview": "%pdf-1.3 % 3 0 obj << /filter /flatedecode /length 68 >> stream x +t t(t0 b sc 3s# t p < l <h h n u 5tp endstream endobj 1 0 obj << /type /page /parent 2 0 r /resources 4 0 r /contents 3 0 r /mediabox [0 0 471 652] /rotate 0 >> endobj 4 0 obj << /procset [ /pdf /imageb /imagec /imagei ] /xobject << /im1 5 0 r >> >> endobj 5 0 obj << /type /xobject /subtype /image /width 942 /height 1304 /interpolate true /colorspace 6 0 r /bitspercomponent 8 /length 287658 /filter /dctdecode >> stream jfif h h @",
+      "rawLength": 292177,
       "cleanLength": 15000,
       "count": 2,
-      "parsedAt": "2026-02-10T11:59:16.954Z"
+      "parsedAt": "2026-02-10T17:11:35.636Z"
     },
-    "updatedAt": "2026-02-10T11:49:47.823Z"
+    "updatedAt": "2026-02-10T17:11:34.173Z"
   },
   {
     "email": "User2@gmail.com",
@@ -64,5 +64,46 @@
       "parsedAt": "2026-02-05T03:20:47.787Z"
     },
     "updatedAt": "2026-02-05T03:20:45.181Z"
+  },
+  {
+    "email": "rakshithak.btech23@rvu.edu.in",
+    "resume": "/uploads/resumes/rakshithak_btech23_rvu_edu_in.pdf",
+    "parsedResume": {
+      "skills": [
+        "git",
+        "java",
+        "python",
+        "sql"
+      ],
+      "method": "advanced-rules",
+      "textPreview": "%pdf-1.4 % 1 0 obj << /type /catalog /version /1.4 /pages 2 0 r /metadata 3 0 r /structtreeroot 4 0 r /markinfo 5 0 r /lang (en) /viewerpreferences 6 0 r >> endobj 7 0 obj << /title (rakshitha's resume) /creator (canva) /producer (canva) /creationdate (d:20260128173003+00'00') /moddate (d:20260128173003+00'00') /keywords (dago1wphodw,baeh8z0u9iu,0) /author (rakshitha k) >> endobj 2 0 obj << /type /pages /kids [8 0 r 9 0 r] /count 2 >> endobj 3 0 obj << /length 2675 /type /metadata /subtype /xml ",
+      "rawLength": 115334,
+      "cleanLength": 15000,
+      "count": 4,
+      "parsedAt": "2026-02-10T13:37:12.938Z"
+    },
+    "updatedAt": "2026-02-10T13:37:11.125Z"
+  },
+  {
+    "email": "User0@gmail.com",
+    "resume": "/uploads/resumes/User0_gmail_com.pdf",
+    "parsedResume": {
+      "skills": [
+        "c\\+",
+        "c\\+\\+",
+        "java",
+        "javascript",
+        "js",
+        "python",
+        "sql"
+      ],
+      "method": "advanced-rules",
+      "textPreview": "%pdf-1.4 % 1 0 obj <</title (computer science resume) /producer (skia/pdf m146 google docs renderer)>> endobj 3 0 obj <</ca 1 /bm /normal>> endobj 5 0 obj <</ca 1 /ca 1 /lc 0 /lj 0 /lw 1.33333337 /ml 10 /sa true /bm /normal>> endobj 6 0 obj <</filter /flatedecode /length 981>> stream x x 7 w ;p 6n `4 &9 `[ x $ k v w d a fe l \\ i ww n b ` u ~ - l6 v v j}t#ln *j' j l p 3 8 fc c e o ; kh $ noq u g ] t s c f: oh > & ~ u c it=6 2b1{v{ x 1 pd l g k @5^ 9\\ $ # d b\"b e oa \\ 4 ; hgk @ b) ! (g ur% v m7 `g",
+      "rawLength": 25156,
+      "cleanLength": 15000,
+      "count": 7,
+      "parsedAt": "2026-02-10T17:11:00.189Z"
+    },
+    "updatedAt": "2026-02-10T17:10:59.264Z"
   }
 ]
