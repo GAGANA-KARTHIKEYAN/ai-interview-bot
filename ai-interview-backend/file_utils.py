@@ -2,6 +2,9 @@ import pdfplumber
 from docx import Document
 from fastapi import UploadFile
 
+// In your API utility files
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 def extract_text_from_file(file: UploadFile) -> str:
     file.file.seek(0)
     filename = file.filename.lower()
