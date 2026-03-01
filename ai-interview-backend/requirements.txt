@@ -3,6 +3,5 @@ uvicorn==0.30.6
 python-multipart==0.0.9
 pdfplumber==0.11.9
 groq==0.5.0
-pydantic==2.7.0  # Newer version with better wheel support
-pydantic-core==2.18.0  # Match with pydantic version
+pydantic==2.7.0
 python-dotenv==1.0.1
