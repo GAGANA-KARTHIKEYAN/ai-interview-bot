@@ -39,7 +39,7 @@ export default function Dashboard() {
   
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
-  const BACKEND = "http://127.0.0.1:8000";
+  const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
   // ========== VOICE SYNTHESIS ==========
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
