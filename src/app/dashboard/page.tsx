@@ -40,26 +40,27 @@ export default function Dashboard() {
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
 
-// To this (for production):
-  const BACKEND = process.env.NODE_ENV === 'production' 
-    ? ''  // Empty string = use same domain
-    : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000");
+  // ========== API CONFIGURATION ==========
+  // In production, use relative paths (/api/...)
+  // In development, use the environment variable or localhost
+  const API_BASE = process.env.NODE_ENV === 'production' 
+    ? ''  // Empty string = use same domain in production
+    : (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000');
 
-// Or better yet, create a helper function:
-  const getApiUrl = (path) => {
-    if (process.env.NODE_ENV === 'production') {
-      // In production, use relative paths
-      return `/api${path}`;
-    } else {
-      // In development, use the backend URL
-      return `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api${path}`;
-    }
-  }
+  // Helper function for making API calls
+  const apiCall = async (endpoint: string, options: RequestInit = {}) => {
+    const url = process.env.NODE_ENV === 'production'
+      ? `/api${endpoint}`  // Use relative path in production
+      : `${API_BASE}/api${endpoint}`;  // Use full URL in development
+    
+    console.log(`🌐 API Call: ${url}`, options.method || 'GET');
+    return fetch(url, options);
+  };
 
-  // Usage:
-// Instead of: fetch(`${BACKEND}/resume/parse`)
-// Use: fetch(getApiUrl('/resume/parse'))
-  // ========== CAMERA STATES ==========
+  // ========== VOICE SYNTHESIS ============
+  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+
+  // ========== CAMERA STATES ===========
   const [showCamera, setShowCamera] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -82,6 +83,18 @@ export default function Dashboard() {
   const [answerTimer, setAnswerTimer] = useState(180);
   const [timerActive, setTimerActive] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debug logging for API configuration
+  useEffect(() => {
+    console.log('🔧 Environment:', process.env.NODE_ENV);
+    console.log('🔧 API Base:', API_BASE);
+    console.log('🔧 Production Mode:', process.env.NODE_ENV === 'production');
+    console.log('🔧 Sample API URL (health):', 
+      process.env.NODE_ENV === 'production' 
+        ? '/api/health' 
+        : `${API_BASE}/api/health`
+    );
+  }, []);
 
   // ========== PROFILE FUNCTIONS ==========
   const refreshProfile = useCallback(() => {
@@ -358,7 +371,7 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      const response = await fetch(`${BACKEND}/health`, { 
+      const response = await apiCall('/health', { 
         method: 'GET',
         signal: AbortSignal.timeout(3000)
       });
@@ -483,7 +496,7 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const res = await fetch(`${BACKEND}/upload-and-analyze`, {
+      const res = await apiCall('/upload-and-analyze', {
         method: "POST",
         body: fd,
         signal: controller.signal
@@ -583,7 +596,7 @@ export default function Dashboard() {
     setDetailedFeedback(null);
     
     try {
-      const response = await fetch(`${BACKEND}/start-interview`, {
+      const response = await apiCall('/start-interview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -753,7 +766,7 @@ export default function Dashboard() {
     
     try {
       // Evaluate this answer
-      const evalResponse = await fetch(`${BACKEND}/evaluate`, {
+      const evalResponse = await apiCall('/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -973,7 +986,7 @@ export default function Dashboard() {
       const skillsRemaining = skills.slice(currentIndex + 1).map(s => s.skill);
       
       // Generate next question
-      const nextResponse = await fetch(`${BACKEND}/next-question`, {
+      const nextResponse = await apiCall('/next-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1071,7 +1084,7 @@ export default function Dashboard() {
 
   const generateSkillSummary = async (skill: string) => {
     try {
-      const response = await fetch(`${BACKEND}/generate-skill-summary`, {
+      const response = await apiCall('/generate-skill-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1091,7 +1104,7 @@ export default function Dashboard() {
 
   const generateFinalReport = async () => {
     try {
-      const response = await fetch(`${BACKEND}/final-report`, {
+      const response = await apiCall('/final-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1202,7 +1215,7 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const res = await fetch(`${BACKEND}/evaluate`, {
+      const res = await apiCall('/evaluate', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
