@@ -32,7 +32,10 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY not found in .env file")
 
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY"),
+    # Remove any other arguments
+)
 
 def call_llm(prompt: str, max_tokens: int = 2000) -> str:
     """Call Groq LLM"""
