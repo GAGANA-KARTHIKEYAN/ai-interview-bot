@@ -101,6 +101,10 @@ def extract_json(text: str) -> dict:
 def home():
     return {"message": "AI Interview Bot API is running"}
 
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "message": "Backend is running"}
+    
 @app.post("/upload-and-analyze")
 async def upload_and_analyze(cv: UploadFile = File(...)):
     """Analyze CV using AI to extract skills with experience levels"""
