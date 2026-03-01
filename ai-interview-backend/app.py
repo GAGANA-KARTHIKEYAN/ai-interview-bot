@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from groq import Groq
 from typing import List, Dict, Any, Optional
 import pdfplumber
-
+from pydantic import BaseModel
 # Load environment variables
 load_dotenv()
 
