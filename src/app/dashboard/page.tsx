@@ -41,8 +41,13 @@ export default function Dashboard() {
   const cvFileRef = useRef<HTMLInputElement>(null);
   const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-  console.log('🔍 API URL:', BACKEND);
-  console.log('🔍 From env:', process.env.NEXT_PUBLIC_API_URL);
+  console.log('🔥🔥🔥 TEST LOG - THIS SHOULD APPEAR');
+  console.log('Environment Check:', {
+    BACKEND: BACKEND,
+    rawEnv: process.env.NEXT_PUBLIC_API_URL,
+    nodeEnv: process.env.NODE_ENV,
+    timestamp: new Date().toISOString()
+  });
   // ========== VOICE SYNTHESIS ==========
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
 
