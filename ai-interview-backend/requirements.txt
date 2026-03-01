@@ -1,6 +1,7 @@
 fastapi==0.115.0
 uvicorn==0.30.6
-pdfplumber==0.10.4
-python-docx==1.1.2
+python-multipart==0.0.9
+pdfplumber==0.11.9
+groq==0.5.0  # Older stable version without Python 3.14 issues
+pydantic==2.5.0
 python-dotenv==1.0.1
-groq==0.5.0
