@@ -41,13 +41,20 @@ export default function Dashboard() {
   const cvFileRef = useRef<HTMLInputElement>(null);
   const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-  console.log('🔥🔥🔥 TEST LOG - THIS SHOULD APPEAR');
-  console.log('Environment Check:', {
-    BACKEND: BACKEND,
-    rawEnv: process.env.NEXT_PUBLIC_API_URL,
-    nodeEnv: process.env.NODE_ENV,
-    timestamp: new Date().toISOString()
-  });
+  const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+  // ADD THIS DEBUG CODE
+  console.log('🔍 BACKEND URL:', BACKEND);
+  console.log('🔍 Full API URL being called:', `${BACKEND}/some-endpoint`);
+
+  // Test if the backend is reachable
+  fetch(`${BACKEND}/health`)
+    .then(res => {
+      console.log('✅ Backend reachable! Status:', res.status);
+      return res.text();
+    })
+    .then(data => console.log('Response:', data))
+    .catch(err => console.error('❌ Backend connection failed:', err.message));
   // ========== VOICE SYNTHESIS ==========
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
 
