@@ -27,15 +27,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
+# Clear any proxy settings that Render might be setting
+os.environ.pop('HTTP_PROXY', None)
+os.environ.pop('HTTPS_PROXY', None)
+os.environ.pop('http_proxy', None)
+os.environ.pop('https_proxy', None)
+
 # Initialize Groq client
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY not found in .env file")
-
-client = Groq(
-    api_key=os.environ.get("GROQ_API_KEY"),
-    # Remove any other arguments
-)
+client = Groq(api_key=GROQ_API_KEY)  # Make sure it's exactly this, no other arguments
 
 def call_llm(prompt: str, max_tokens: int = 2000) -> str:
     """Call Groq LLM"""
