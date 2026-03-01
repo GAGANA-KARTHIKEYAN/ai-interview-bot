@@ -20,13 +20,17 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+# Add this CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://vercel.com/gagana-karthikeyans-projects/ai-interview-bot",  # Your Vercel frontend URL
+        "http://localhost:3000"  # For local development
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 
 # Clear any proxy settings that Render might be setting
