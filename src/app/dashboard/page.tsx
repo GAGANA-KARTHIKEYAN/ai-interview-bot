@@ -343,7 +343,7 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      const response = await fetch(`${BACKEND}/`, { 
+      const response = await fetch(`${BACKEND}/health`, { 
         method: 'GET',
         signal: AbortSignal.timeout(3000)
       });
