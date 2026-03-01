@@ -40,19 +40,7 @@ export default function Dashboard() {
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
 
-  // ========== API CONFIGURATION ==========
-  // In production, use relative paths (/api/...)
-  // In development, use the environment variable or localhost
-// Find this section (around line 80-90)
-const API_BASE = process.env.NODE_ENV === 'production' 
-  ? ''  // Change this to your deployed backend URL
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000');
-
-// CHANGE TO THIS:
-const API_BASE = process.env.NODE_ENV === 'production' 
-  ? 'https://ai-interview-bot-docker.onrender.com'  // Your deployed backend URL
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000');
-
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
   // Helper function for making API calls
   const apiCall = async (endpoint: string, options: RequestInit = {}) => {
     const url = process.env.NODE_ENV === 'production'
