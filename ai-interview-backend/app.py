@@ -24,7 +24,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://vercel.com/gagana-karthikeyans-projects/ai-interview-bot",  # Your Vercel frontend URL
+        "https://ai-interview-e1cf3ugkx-gagana-karthikeyans-projects.vercel.app",  # Your Vercel frontend URL
         "http://localhost:3000"  # For local development
     ],
     allow_credentials=True,
