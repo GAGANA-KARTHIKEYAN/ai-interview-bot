@@ -51,6 +51,13 @@ export default function Dashboard() {
     return fetch(url, options);
   };
 
+  // Debug logging
+  useEffect(() => {
+    console.log('🔧 Environment:', process.env.NODE_ENV);
+    console.log('🔧 API_BASE from env:', process.env.NEXT_PUBLIC_API_URL);
+    console.log('🔧 Final API_BASE:', API_BASE);
+    console.log('🔧 Test URL:', `${API_BASE}/api/health`);
+  }, []);
   // ========== VOICE SYNTHESIS ============
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
 
