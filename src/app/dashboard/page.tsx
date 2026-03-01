@@ -39,25 +39,26 @@ export default function Dashboard() {
   
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
-  const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-  const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+// To this (for production):
+  const BACKEND = process.env.NODE_ENV === 'production' 
+    ? ''  // Empty string = use same domain
+    : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000");
 
-  // ADD THIS DEBUG CODE
-  console.log('🔍 BACKEND URL:', BACKEND);
-  console.log('🔍 Full API URL being called:', `${BACKEND}/some-endpoint`);
+// Or better yet, create a helper function:
+  const getApiUrl = (path) => {
+    if (process.env.NODE_ENV === 'production') {
+      // In production, use relative paths
+      return `/api${path}`;
+    } else {
+      // In development, use the backend URL
+      return `${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000'}/api${path}`;
+    }
+  }
 
-  // Test if the backend is reachable
-  fetch(`${BACKEND}/health`)
-    .then(res => {
-      console.log('✅ Backend reachable! Status:', res.status);
-      return res.text();
-    })
-    .then(data => console.log('Response:', data))
-    .catch(err => console.error('❌ Backend connection failed:', err.message));
-  // ========== VOICE SYNTHESIS ==========
-  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
-
+  // Usage:
+// Instead of: fetch(`${BACKEND}/resume/parse`)
+// Use: fetch(getApiUrl('/resume/parse'))
   // ========== CAMERA STATES ==========
   const [showCamera, setShowCamera] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
