@@ -1,3 +1,5 @@
+'use client';
+
 export default function Home() {
   return (
     <div style={{
@@ -6,20 +8,12 @@ export default function Home() {
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'radial-gradient(circle at top left, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-      color: 'white',
       textAlign: 'center',
-      padding: '20px',
-      fontFamily: "'Inter', sans-serif"
+      padding: '20px'
     }}>
-      {/* Background Micro-animation logic could go here */}
-      <div style={{
+      <div className="glass-card" style={{
         padding: '60px',
         borderRadius: '30px',
-        background: 'rgba(255, 255, 255, 0.03)',
-        backdropFilter: 'blur(15px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
         maxWidth: '800px',
         width: '100%',
         animation: 'fadeIn 1s ease-out'
@@ -91,14 +85,6 @@ export default function Home() {
           🚀 Ready for Demo Mode | <span style={{ color: '#f87171' }}>Note: Persistent storage disabled</span>
         </div>
       </div>
-
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        body { margin: 0; }
-      `}</style>
     </div>
   );
 }
