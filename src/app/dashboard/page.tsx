@@ -1794,63 +1794,31 @@ export default function Dashboard() {
                             flexWrap: 'wrap',
                             gap: '15px'
                           }}>
-                            <div style={{ flex: 2, minWidth: '250px' }}>
-                              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                <span style={{ fontSize: '14px', color: '#4b5563' }}>
-                                  <strong>Date:</strong> {new Date(interview.date).toLocaleDateString()} {new Date(interview.date).toLocaleTimeString()}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '18px', fontWeight: '700', color: 'white' }}>
+                                  <strong>Date:</strong> {new Date(interview.date).toLocaleDateString()}
                                 </span>
                                 <span style={{
                                   padding: '6px 12px',
-                                  background: interview.terminated ? '#fee2e2' : '#d1fae5',
-                                  color: interview.terminated ? '#991b1b' : '#065f46',
-                                  borderRadius: '6px',
+                                  background: interview.terminated ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                  color: interview.terminated ? '#ef4444' : '#10b981',
+                                  borderRadius: '8px',
+                                  border: '1px solid rgba(255, 255, 255, 0.1)',
                                   fontWeight: '600',
                                   fontSize: '14px'
                                 }}>
                                   Score: {interview.overallScore || 0}%
                                 </span>
-                                {interview.type === 'dynamic' && (
-                                  <span style={{
-                                    padding: '6px 12px',
-                                    background: '#dbeafe',
-                                    color: '#1e40af',
-                                    borderRadius: '6px',
-                                    fontSize: '13px'
-                                  }}>
-                                    Dynamic
-                                  </span>
-                                )}
-                                {interview.partial && (
-                                  <span style={{
-                                    padding: '6px 12px',
-                                    background: '#fef3c7',
-                                    color: '#92400e',
-                                    borderRadius: '6px',
-                                    fontSize: '13px'
-                                  }}>
-                                    Partial
-                                  </span>
-                                )}
-                                {interview.terminated && (
-                                  <span style={{
-                                    padding: '6px 12px',
-                                    background: '#fee2e2',
-                                    color: '#991b1b',
-                                    borderRadius: '6px',
-                                    fontSize: '13px'
-                                  }}>
-                                    Terminated
-                                  </span>
-                                )}
                               </div>
-                              <div style={{ marginTop: '8px' }}>
-                                <span style={{ fontSize: '14px', color: '#6b7280' }}>
+                              <div style={{ marginTop: '12px' }}>
+                                <span style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.6)' }}>
                                   <strong>Skills:</strong> {interview.skills?.slice(0, 5).join(', ')}{interview.skills?.length > 5 ? '...' : ''}
                                 </span>
                               </div>
                               {interview.totalTabSwitches > 0 && (
-                                <div style={{ marginTop: '4px', fontSize: '13px', color: '#ef4444' }}>
-                                  Tab switches: {interview.totalTabSwitches}
+                                <div style={{ marginTop: '8px', fontSize: '13px', color: '#ef4444' }}>
+                                  ⚠️ Tab switches: {interview.totalTabSwitches}
                                 </div>
                               )}
                             </div>
@@ -1878,19 +1846,19 @@ export default function Dashboard() {
 
                     {/* Summary Statistics */}
                     <div className="stats-grid">
-                      <div style={{ padding: '20px', background: '#f1f5f9', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '14px', color: '#6b7280' }}>Total Interviews</div>
-                        <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e293b' }}>{previousInterviews.length}</div>
+                      <div className="score-item">
+                        <div style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.5)' }}>Total Interviews</div>
+                        <div style={{ fontSize: '32px', fontWeight: '800', color: 'white' }}>{previousInterviews.length}</div>
                       </div>
-                      <div style={{ padding: '20px', background: '#f1f5f9', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '14px', color: '#6b7280' }}>Average Score</div>
-                        <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e293b' }}>
-                          {Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length)}%
+                      <div className="score-item">
+                        <div style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.5)' }}>Average Score</div>
+                        <div style={{ fontSize: '32px', fontWeight: '800', color: '#60a5fa' }}>
+                          {previousInterviews.length > 0 ? Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length) : 0}%
                         </div>
                       </div>
-                      <div style={{ padding: '20px', background: '#f1f5f9', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '14px', color: '#6b7280' }}>Terminated</div>
-                        <div style={{ fontSize: '32px', fontWeight: '700', color: '#ef4444' }}>
+                      <div className="score-item">
+                        <div style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.5)' }}>Terminated</div>
+                        <div style={{ fontSize: '32px', fontWeight: '800', color: '#ef4444' }}>
                           {previousInterviews.filter(i => i.terminated).length}
                         </div>
                       </div>
@@ -1932,11 +1900,12 @@ export default function Dashboard() {
                   accept=".pdf,.docx"
                   style={{
                     width: '100%',
-                    padding: '16px',
-                    margin: '15px 0',
-                    border: '2px dashed #3b82f6',
-                    borderRadius: '8px',
-                    background: '#f8fafc',
+                    padding: '20px',
+                    margin: '25px 0',
+                    border: '2px dashed rgba(255, 255, 255, 0.1)',
+                    borderRadius: '16px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    color: 'white',
                     cursor: 'pointer',
                     fontSize: '16px'
                   }}
@@ -1945,10 +1914,10 @@ export default function Dashboard() {
                 <div id="interview-uploadStatus" style={{
                   padding: '12px',
                   margin: '10px 0',
-                  borderRadius: '6px',
-                  background: '#f8fafc',
+                  borderRadius: '12px',
+                  background: 'rgba(255, 255, 255, 0.03)',
                   fontSize: '16px',
-                  color: '#6b7280'
+                  color: 'rgba(255, 255, 255, 0.6)'
                 }}></div>
 
                 <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
@@ -1979,13 +1948,13 @@ export default function Dashboard() {
                 <div id="interview-skillsList" style={{
                   display: 'flex',
                   flexWrap: 'wrap',
-                  gap: '10px',
-                  margin: '20px 0',
-                  padding: '20px',
-                  background: '#f8fafc',
-                  borderRadius: '8px',
+                  gap: '12px',
+                  margin: '30px 0',
+                  padding: '30px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  borderRadius: '20px',
                   minHeight: '100px',
-                  border: '2px solid #e5e7eb'
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
                 }}>
                   {skills.map((skill, index) => (
                     <span key={index} className="skill-tag">
@@ -2045,20 +2014,21 @@ export default function Dashboard() {
                 </h4>
 
                 <div style={{
-                  background: '#f8fafc',
-                  padding: '25px',
-                  borderRadius: '8px',
-                  marginBottom: '20px',
-                  border: '2px solid #e5e7eb'
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  padding: '30px',
+                  borderRadius: '16px',
+                  marginBottom: '25px',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
                 }}>
-                  <h4 style={{ marginTop: 0, color: '#334155', fontSize: '16px', fontWeight: '600' }}>Question:</h4>
+                  <h4 style={{ marginTop: 0, color: 'rgba(255, 255, 255, 0.5)', fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Question:</h4>
                   <p id="interview-questionText" style={{
-                    fontSize: '18px',
+                    fontSize: '22px',
                     lineHeight: '1.6',
-                    color: '#1f2937',
-                    margin: '10px 0 0 0'
+                    color: 'white',
+                    fontWeight: '600',
+                    margin: '15px 0 0 0'
                   }}>
-                    {currentQuestion || "Loading question..."}
+                    {currentQuestion || "Preparing your personalized question..."}
                   </p>
                 </div>
 
