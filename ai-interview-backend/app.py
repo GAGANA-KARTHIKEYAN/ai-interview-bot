@@ -23,11 +23,8 @@ app = FastAPI()
 # Add this CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000"  # For local development
-    ],
-    allow_origin_regex=r"https://ai-interview.*\.vercel\.app", # Matches any of your Vercel deployment URLs dynamically
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
