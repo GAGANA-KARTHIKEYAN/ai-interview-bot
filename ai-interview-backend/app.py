@@ -8,7 +8,7 @@ import traceback
 import logging
 from dotenv import load_dotenv
 from groq import Groq
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 from pydantic import BaseModel
 # Load environment variables
@@ -114,15 +114,18 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
     
     try:
         # Extract text from PDF
-        text = ""
+        text_chunks: list[str] = []
         with pdfplumber.open(cv.file) as pdf:
             for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
-                    text += page_text + "\n"
+                    text_chunks.append(str(page_text))
+        
+        text: str = "\n".join(text_chunks)
         
         # Truncate if too long
-        text = text[:4000] if len(text) > 4000 else text
+        if len(text) > 4000:
+            text = text[0:4000]
         logger.info(f"Extracted {len(text)} characters from CV")
         
         prompt = f"""
@@ -195,10 +198,15 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
         
         # Ensure each skill has all required fields
         for skill in matched_skills:
+            if not isinstance(skill, dict):
+                continue
+            if "skill" not in skill:
+                skill["skill"] = "Unknown Skill"
+                
             if "typical_questions" not in skill or not skill["typical_questions"]:
-                skill["typical_questions"] = generate_fallback_questions(skill["skill"], skill.get("experience_level", "intermediate"))
+                skill["typical_questions"] = generate_fallback_questions(str(skill["skill"]), str(skill.get("experience_level", "intermediate")))
             if "category" not in skill:
-                skill["category"] = categorize_skill(skill["skill"])
+                skill["category"] = categorize_skill(str(skill["skill"]))
             if "experience_level" not in skill:
                 skill["experience_level"] = "intermediate"
         
@@ -572,13 +580,26 @@ async def evaluate(payload: dict):
     question = payload.get("question", "")
     answer = payload.get("answer", "")
     skill = payload.get("skill", "")
+    input_type = payload.get("input_type", "TEXT")
     
+    # Infer input type if passed missing from frontend but marked in text
+    if "[VIDEO RECORDING DURATION:" in answer:
+        input_type = "VIDEO"
+    elif "Voice input" in answer or "Listening..." in answer:
+        input_type = "VOICE"
+        
     prompt = f"""
     You're a technical interviewer evaluating a candidate's answer.
     
-    Skill: {skill}
+    CONTEXT: {input_type} input | SKILL: {skill} | ANSWER: "{answer}"
     Question: {question}
-    Answer: {answer}
+    
+    RULES - Score ONLY applicable metrics based on the input type:
+    - If TEXT input: Score Technical + Confidence only. Use "N/A" for Communication and Behavioral.
+    - If VOICE input: Score Technical + Communication + Confidence. Use "N/A" for Behavioral.
+    - If VIDEO input: Score All 4 metrics (Technical, Confidence, Communication, Behavioral).
+    
+    For inapplicable metrics, use "N/A" (or 0 for numeric scores if strictly required, but write "N/A" in explanations).
     
     Evaluate this answer and provide comprehensive feedback. Be extremely detailed.
     

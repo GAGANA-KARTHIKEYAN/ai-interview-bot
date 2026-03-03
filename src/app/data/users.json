@@ -45,5 +45,13 @@
     "name": "User0",
     "resume": null,
     "createdAt": "2026-02-10T17:08:12.558Z"
+  },
+  {
+    "id": 1772518314420,
+    "email": "cjsakshi29@gmail.com",
+    "password": "meowmeow",
+    "name": "cjsakshi",
+    "resume": null,
+    "createdAt": "2026-03-03T06:11:54.420Z"
   }
 ]

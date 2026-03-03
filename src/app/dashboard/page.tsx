@@ -25,7 +25,7 @@ export default function Dashboard() {
   const [previousInterviews, setPreviousInterviews] = useState<any[]>([]);
   const [backendStatus, setBackendStatus] = useState<string>('Checking...');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  
+
   // ========== DYNAMIC INTERVIEW STATES ==========
   const [interviewSession, setInterviewSession] = useState<any>(null);
   const [currentAnalysis, setCurrentAnalysis] = useState<any>(null);
@@ -36,9 +36,10 @@ export default function Dashboard() {
   const [conversationFlow, setConversationFlow] = useState<any[]>([]);
   const [detailedFeedback, setDetailedFeedback] = useState<any>(null);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
-  
+
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
 
   const API_BASE = "https://ai-interview-bot-docker.onrender.com";
   // Helper function for making API calls
@@ -46,7 +47,7 @@ export default function Dashboard() {
     const url = process.env.NODE_ENV === 'production'
       ? `/api${endpoint}`  // Use relative path in production
       : `${API_BASE}/api${endpoint}`;  // Use full URL in development
-    
+
     console.log(`🌐 API Call: ${url}`, options.method || 'GET');
     return fetch(url, options);
   };
@@ -71,6 +72,7 @@ export default function Dashboard() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const cameraTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   // ========== TAB SWITCH DETECTION ==========
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
@@ -90,9 +92,9 @@ export default function Dashboard() {
     console.log('🔧 Environment:', process.env.NODE_ENV);
     console.log('🔧 API Base:', API_BASE);
     console.log('🔧 Production Mode:', process.env.NODE_ENV === 'production');
-    console.log('🔧 Sample API URL (health):', 
-      process.env.NODE_ENV === 'production' 
-        ? '/api/health' 
+    console.log('🔧 Sample API URL (health):',
+      process.env.NODE_ENV === 'production'
+        ? '/api/health'
         : `${API_BASE}/api/health`
     );
   }, []);
@@ -100,7 +102,7 @@ export default function Dashboard() {
   // ========== PROFILE FUNCTIONS ==========
   const refreshProfile = useCallback(() => {
     if (!user?.email) return;
-    fetch('/api/profile', { 
+    fetch('/api/profile', {
       headers: { 'email': user.email },
       cache: 'no-store'
     })
@@ -121,17 +123,17 @@ export default function Dashboard() {
       router.push('/login');
       return;
     }
-    
+
     const parsedUser = JSON.parse(storedUser);
     setUser(parsedUser);
     refreshProfile();
-    
+
     // Load ALL previous interviews
     const savedInterviews = localStorage.getItem(`interviews_${parsedUser.email}`);
     if (savedInterviews) {
       setPreviousInterviews(JSON.parse(savedInterviews));
     }
-    
+
     checkBackendStatus();
     setLoading(false);
   }, [router, refreshProfile]);
@@ -140,54 +142,54 @@ export default function Dashboard() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!isInterviewActive || interviewStep !== 'interview' || interviewTerminated) return;
-      
+
       const isHidden = document.hidden;
-      
+
       if (isHidden && visibilityRef.current) {
         visibilityRef.current = false;
-        
+
         setTabSwitchCount(prev => {
           const newCount = prev + 1;
-          
+
           // Show warning immediately on each switch
           setShowTabWarning(true);
-          
+
           if (warningTimeoutRef.current) {
             clearTimeout(warningTimeoutRef.current);
           }
-          
+
           warningTimeoutRef.current = setTimeout(() => {
             setShowTabWarning(false);
           }, 5000);
-          
+
           if (newCount >= 3) {
             setInterviewTerminated(true);
             setShowTabWarning(false);
             setInterviewStep('summary');
             setIsInterviewActive(false);
-            
+
             const invalidAnswer = "INTERVIEW TERMINATED: Tab switching detected 3 times";
             if (answerBoxRef.current) {
               answerBoxRef.current.value = invalidAnswer;
             }
-            
+
             // Save terminated interview
             saveTerminatedInterview();
-            
+
             alert("Interview terminated due to multiple tab switches.");
-            
+
           }
-          
+
           return newCount;
         });
-        
+
       } else if (!isHidden && !visibilityRef.current) {
         visibilityRef.current = true;
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (warningTimeoutRef.current) {
@@ -198,7 +200,7 @@ export default function Dashboard() {
 
   const saveTerminatedInterview = () => {
     if (!user?.email) return;
-    
+
     const interviewData = {
       id: Date.now(),
       date: new Date().toISOString(),
@@ -235,24 +237,24 @@ export default function Dashboard() {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
       }
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
           width: { ideal: 1280 },
           height: { ideal: 720 },
           facingMode: 'user'
         },
-        audio: true 
+        audio: true
       });
-      
+
       setCameraStream(stream);
       setIsCameraActive(true);
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(e => console.error("Video play error:", e));
       }
-      
+
       setShowCamera(true);
     } catch (err) {
       console.error("Camera error:", err);
@@ -267,7 +269,7 @@ export default function Dashboard() {
       });
       setCameraStream(null);
       setIsCameraActive(false);
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
@@ -291,50 +293,87 @@ export default function Dashboard() {
       alert("Camera not initialized. Please try again.");
       return;
     }
-    
+
     try {
       recordedChunksRef.current = [];
-      
+      const recordingStartTime = Date.now();
+
+      if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
+        try {
+          const recognition = new (window as any).webkitSpeechRecognition();
+          recognition.lang = "en-US";
+          recognition.continuous = true;
+          recognition.interimResults = true;
+
+          const existingText = answerBoxRef.current?.value || "";
+
+          recognition.onresult = (e: any) => {
+            let currentTranscript = existingText;
+            if (currentTranscript && !currentTranscript.endsWith(" ") && !currentTranscript.endsWith("\n")) {
+              currentTranscript += " ";
+            }
+            for (let i = e.resultIndex; i < e.results.length; ++i) {
+              currentTranscript += e.results[i][0].transcript;
+            }
+            if (answerBoxRef.current) {
+              answerBoxRef.current.value = currentTranscript;
+            }
+          };
+
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch (err) {
+          console.error("Speech recognition error:", err);
+        }
+      }
+
       const mediaRecorder = new MediaRecorder(cameraStream, {
         mimeType: 'video/webm;codecs=vp9,opus',
         videoBitsPerSecond: 2500000
       });
-      
+
       mediaRecorderRef.current = mediaRecorder;
-      
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
         }
       };
-      
+
       mediaRecorder.onstop = () => {
         const videoBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        
+
         const url = URL.createObjectURL(videoBlob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `interview_${skills[currentIndex]?.skill || 'answer'}_${Date.now()}.webm`;
         a.click();
-        
-        const videoAnswer = `[VIDEO RECORDING: ${Math.floor(180 - recordingTimeLeft)} seconds] - Answer captured on video`;
+
+        const durationSeconds = Math.floor((Date.now() - recordingStartTime) / 1000);
+        const videoAnswerInfo = `[VIDEO RECORDING DURATION: ${durationSeconds} seconds]`;
+
         if (answerBoxRef.current) {
-          answerBoxRef.current.value = videoAnswer;
+          const currentText = answerBoxRef.current.value.trim();
+          if (!currentText || currentText === "Listening..." || currentText === "[NO ANSWER PROVIDED - TIME EXPIRED]") {
+            answerBoxRef.current.value = `${videoAnswerInfo}\nAnswer captured on video but no speech detected.`;
+          } else {
+            answerBoxRef.current.value = `${currentText}\n\n${videoAnswerInfo}`;
+          }
         }
-        
+
         setTimeout(() => {
           submitAnswer();
         }, 1500);
       };
-      
+
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingTimeLeft(180);
-      
+
       if (cameraTimerRef.current) {
         clearInterval(cameraTimerRef.current);
       }
-      
+
       cameraTimerRef.current = setInterval(() => {
         setRecordingTimeLeft(prev => {
           if (prev <= 1) {
@@ -344,7 +383,7 @@ export default function Dashboard() {
           return prev - 1;
         });
       }, 1000);
-      
+
     } catch (err) {
       console.error("Recording error:", err);
       alert("Failed to start recording. Please try again.");
@@ -355,9 +394,18 @@ export default function Dashboard() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
-    
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping recognition", e);
+      }
+      recognitionRef.current = null;
+    }
+
     setIsRecording(false);
-    
+
     if (cameraTimerRef.current) {
       clearInterval(cameraTimerRef.current);
       cameraTimerRef.current = null;
@@ -372,7 +420,7 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      const response = await apiCall('/health', { 
+      const response = await apiCall('/health', {
         method: 'GET',
         signal: AbortSignal.timeout(3000)
       });
@@ -466,10 +514,10 @@ export default function Dashboard() {
     setInterviewTerminated(false);
     setTabSwitchCount(0);
     setShowTabWarning(false);
-    
+
     // Save partial results if any
-    if ((interviewMode === 'dynamic' && questionHistory.length > 0) || 
-        (interviewMode === 'standard' && results.length > 0)) {
+    if ((interviewMode === 'dynamic' && questionHistory.length > 0) ||
+      (interviewMode === 'standard' && results.length > 0)) {
       savePartialResults();
     }
   };
@@ -495,7 +543,7 @@ export default function Dashboard() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
 
       const res = await apiCall('/upload-and-analyze', {
         method: "POST",
@@ -511,7 +559,7 @@ export default function Dashboard() {
 
       const data = await res.json();
       console.log("Backend response:", data);
-      
+
       // Get skills from response
       let matchedSkills = [];
       if (data.matched_skills && Array.isArray(data.matched_skills)) {
@@ -521,7 +569,7 @@ export default function Dashboard() {
       } else {
         matchedSkills = [];
       }
-      
+
       if (matchedSkills.length === 0) {
         alert("No skills matched. Using default skills.");
         // Use default skills
@@ -536,7 +584,7 @@ export default function Dashboard() {
       }
 
       setSkills(matchedSkills);
-      
+
       // Display skills in the UI
       const list = document.getElementById("interview-skillsList");
       if (list) {
@@ -553,7 +601,7 @@ export default function Dashboard() {
       if (status) status.innerText = `Found ${matchedSkills.length} skills!`;
     } catch (err: any) {
       console.error("CV Analysis error:", err);
-      
+
       // Use default skills on error
       const defaultSkills = [
         { skill: "Python", experience_level: "intermediate", category: "language", typical_questions: ["Explain Python decorators", "What are list comprehensions?"] },
@@ -563,9 +611,9 @@ export default function Dashboard() {
         { skill: "SQL", experience_level: "intermediate", category: "database", typical_questions: ["Explain JOIN types", "What's normalization?"] },
         { skill: "Git", experience_level: "intermediate", category: "tool", typical_questions: ["Explain branching strategy", "How to resolve conflicts?"] }
       ];
-      
+
       setSkills(defaultSkills);
-      
+
       const list = document.getElementById("interview-skillsList");
       if (list) {
         list.innerHTML = "";
@@ -576,7 +624,7 @@ export default function Dashboard() {
           list.appendChild(skillTag);
         });
       }
-      
+
       setInterviewStep('skills');
       if (status) status.innerText = "Using default skills (API error)";
     } finally {
@@ -595,37 +643,37 @@ export default function Dashboard() {
     setConversationFlow([]);
     setCurrentAnalysis(null);
     setDetailedFeedback(null);
-    
+
     try {
       const response = await apiCall('/start-interview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           skills: skills,
           userLevel: 'intermediate'
         })
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         setInterviewSession(data.interview_state);
         setCurrentQuestion(data.question.question);
         setCurrentAnalysis(null);
-        
+
         // Add to conversation flow
         setConversationFlow([{
           type: 'question',
           content: data.question,
           timestamp: new Date().toISOString()
         }]);
-        
+
         // Update title
         const title = document.getElementById("interview-skillTitle") as HTMLElement;
         if (title) title.innerText = `Skill 1/${skills.length}: ${skills[0]?.skill} (${skills[0]?.experience_level || 'intermediate'})`;
-        
+
         startAnswerTimer();
-        
+
         // Speak the question
         speak(data.question.question);
       } else {
@@ -646,12 +694,12 @@ export default function Dashboard() {
     setTabSwitchCount(0);
     setInterviewTerminated(false);
     setInterviewMode('standard');
-    
+
     startAnswerTimer();
-    
+
     if (skills.length > 0) {
       const skill = skills[0]?.skill;
-      
+
       // Use first typical question if available
       if (skills[0]?.typical_questions && skills[0].typical_questions.length > 0) {
         setCurrentQuestion(skills[0].typical_questions[0]);
@@ -661,7 +709,7 @@ export default function Dashboard() {
         setCurrentQuestion(question);
         speak(question);
       }
-      
+
       const title = document.getElementById("interview-skillTitle") as HTMLElement;
       if (title) title.innerText = `Skill 1/${skills.length}: ${skill}`;
     }
@@ -675,11 +723,11 @@ export default function Dashboard() {
   const startAnswerTimer = () => {
     setAnswerTimer(180);
     setTimerActive(true);
-    
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
-    
+
     timerRef.current = setInterval(() => {
       setAnswerTimer(prev => {
         if (prev <= 1) {
@@ -687,11 +735,11 @@ export default function Dashboard() {
             clearInterval(timerRef.current);
           }
           setTimerActive(false);
-          
+
           if (answerBoxRef.current && answerBoxRef.current.value.trim() === '') {
             answerBoxRef.current.value = "[NO ANSWER PROVIDED - TIME EXPIRED]";
           }
-          
+
           submitAnswer();
           return 0;
         }
@@ -722,25 +770,25 @@ export default function Dashboard() {
     recognition.lang = "en-US";
     recognition.continuous = false;
     recognition.interimResults = false;
-    
+
     recognition.onstart = () => {
       if (answerBoxRef.current) {
         answerBoxRef.current.value = "Listening...";
       }
     };
-    
+
     recognition.onresult = (e: any) => {
       if (answerBoxRef.current && e.results[0][0].transcript) {
         answerBoxRef.current.value = e.results[0][0].transcript;
       }
     };
-    
+
     recognition.onerror = () => {
       if (answerBoxRef.current) {
         answerBoxRef.current.value = "Voice recognition failed. Please type your answer.";
       }
     };
-    
+
     recognition.start();
   };
 
@@ -755,7 +803,7 @@ export default function Dashboard() {
   const submitDynamicAnswer = async () => {
     stopAnswerTimer();
     stopVideoRecording();
-    
+
     const answer = answerBoxRef.current?.value || '';
     if (!answer.trim() && !interviewTerminated) {
       alert('Please answer the question');
@@ -764,26 +812,26 @@ export default function Dashboard() {
     }
 
     setIsGeneratingNext(true);
-    
+
     try {
       // Evaluate this answer
       const evalResponse = await apiCall('/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           question: currentQuestion,
           answer: answer,
           skill: skills[currentIndex]?.skill,
           history: questionHistory
         })
       });
-      
+
       const evalData = await evalResponse.json();
       const evaluation = evalData.evaluation || evalData;
-      
+
       // Store detailed feedback
       setDetailedFeedback(evaluation);
-      
+
       // Add to conversation flow
       const newFlowItem = {
         type: 'answer',
@@ -795,7 +843,7 @@ export default function Dashboard() {
         timestamp: new Date().toISOString()
       };
       setConversationFlow([...conversationFlow, newFlowItem]);
-      
+
       // Add to history
       const newHistoryItem = {
         skill: skills[currentIndex]?.skill,
@@ -804,22 +852,22 @@ export default function Dashboard() {
         evaluation: evaluation,
         timestamp: new Date().toISOString()
       };
-      
+
       const updatedHistory = [...questionHistory, newHistoryItem];
       setQuestionHistory(updatedHistory);
-      
+
       // Format feedback for display
       const formattedFeedback = formatDetailedFeedback(evaluation);
       setFeedbackText(formattedFeedback);
-      
+
       // Show feedback step (stays until user clicks Next)
       setInterviewStep('feedback');
-      
+
       // Speak short summary
       if (evaluation.summary_feedback) {
         speak(evaluation.summary_feedback);
       }
-      
+
     } catch (error) {
       console.error('Error in dynamic flow:', error);
       setIsGeneratingNext(false);
@@ -831,9 +879,9 @@ export default function Dashboard() {
 
   const formatDetailedFeedback = (evaluation: any) => {
     if (!evaluation) return 'No feedback available';
-    
+
     const evalData = evaluation.evaluation || evaluation;
-    
+
     const scores = evalData.scores || {
       technical_score: 0,
       confidence_score: 0,
@@ -841,11 +889,11 @@ export default function Dashboard() {
       behavioral_score: 0,
       overall_score: 0
     };
-    
+
     const scoreExplanations = evalData.score_explanations || {};
     const gaps = evalData.gaps_identified || {};
     const comm = evalData.communication || {};
-    
+
     let feedback = `
 ╔══════════════════════════════════════════════════════════╗
 ║                     DETAILED FEEDBACK                     ║
@@ -853,7 +901,7 @@ export default function Dashboard() {
 
 📊 SCORES
 `;
-    
+
     // Score cards
     feedback += `
    ╔══════════════════════════════════════════════════════════╗
@@ -881,29 +929,29 @@ export default function Dashboard() {
 
     // What was wrong / gaps
     feedback += `\n❌ WHAT WAS MISSING / WRONG\n`;
-    
+
     if (gaps.knowledge_gaps && gaps.knowledge_gaps.length > 0) {
       gaps.knowledge_gaps.forEach((gap: string) => {
         feedback += `   • Knowledge Gap: ${gap}\n`;
       });
     }
-    
+
     if (gaps.depth_gaps && gaps.depth_gaps.length > 0) {
       gaps.depth_gaps.forEach((gap: string) => {
         feedback += `   • Depth Gap: ${gap}\n`;
       });
     }
-    
+
     if (gaps.example_gaps) {
       feedback += `   • Example Gap: ${gaps.example_gaps}\n`;
     }
-    
+
     if (evalData.technical_accuracy?.misunderstood_concepts?.length > 0) {
       evalData.technical_accuracy.misunderstood_concepts.forEach((c: string) => {
         feedback += `   • Misunderstood: ${c}\n`;
       });
     }
-    
+
     if (evalData.technical_accuracy?.missed_concepts?.length > 0) {
       evalData.technical_accuracy.missed_concepts.forEach((c: string) => {
         feedback += `   • Missed Concept: ${c}\n`;
@@ -967,7 +1015,7 @@ export default function Dashboard() {
 
     // Summary
     feedback += `\n💬 SUMMARY\n   ${evalData.summary_feedback || 'Good effort!'}\n`;
-    
+
     return feedback;
   };
 
@@ -981,11 +1029,11 @@ export default function Dashboard() {
 
   const generateNextDynamicQuestion = async () => {
     setIsGeneratingNext(true);
-    
+
     try {
       // Get skills remaining
       const skillsRemaining = skills.slice(currentIndex + 1).map(s => s.skill);
-      
+
       // Generate next question
       const nextResponse = await apiCall('/next-question', {
         method: 'POST',
@@ -998,40 +1046,40 @@ export default function Dashboard() {
           skillsRemaining: skillsRemaining
         })
       });
-      
+
       const nextData = await nextResponse.json();
-      
+
       if (nextData.success) {
         setCurrentAnalysis(nextData.analysis || {});
-        
+
         // Check if we should transition to next skill
         if (nextData.should_transition?.transition) {
           // Generate summary for current skill
           await generateSkillSummary(skills[currentIndex]?.skill);
-          
+
           if (currentIndex + 1 < skills.length) {
             // Move to next skill
             const nextIndex = currentIndex + 1;
             setCurrentIndex(nextIndex);
-            
+
             // Use first typical question for next skill if available
             const nextSkill = skills[nextIndex];
             let nextQuestionText = `Let's move on to ${nextSkill.skill}. Can you tell me about your experience with it?`;
-            
+
             if (nextSkill.typical_questions && nextSkill.typical_questions.length > 0) {
               nextQuestionText = nextSkill.typical_questions[0];
             }
-            
+
             setCurrentQuestion(nextQuestionText);
             setQuestionHistory([]); // Reset history for new skill
             setDetailedFeedback(null);
-            
+
             // Update title
             const title = document.getElementById("interview-skillTitle") as HTMLElement;
             if (title) title.innerText = `Skill ${nextIndex + 1}/${skills.length}: ${nextSkill.skill}`;
-            
+
             setInterviewStep('interview');
-            
+
             // Speak the question
             speak(nextQuestionText);
           } else {
@@ -1044,22 +1092,22 @@ export default function Dashboard() {
           // Continue with next question for same skill
           const nextQuestion = nextData.next_question || {};
           const questionText = nextQuestion.question || `Let's continue with ${skills[currentIndex]?.skill}. Can you tell me more?`;
-          
+
           setCurrentQuestion(questionText);
           setCurrentAnalysis(nextData.analysis || {});
           setDetailedFeedback(null);
-          
+
           setInterviewStep('interview');
-          
+
           // Speak the question
           speak(questionText);
         }
-        
+
         // Clear answer box
         if (answerBoxRef.current) {
           answerBoxRef.current.value = '';
         }
-        
+
         // Reset timer
         resetAnswerTimer();
       } else {
@@ -1094,10 +1142,10 @@ export default function Dashboard() {
           evaluations: questionHistory.map(h => h.evaluation)
         })
       });
-      
+
       const summary = await response.json();
       setSkillSummaries([...skillSummaries, summary]);
-      
+
     } catch (error) {
       console.error('Failed to generate skill summary:', error);
     }
@@ -1115,12 +1163,12 @@ export default function Dashboard() {
           skillSummaries: skillSummaries
         })
       });
-      
+
       const report = await response.json();
-      
+
       // Save interview results
       saveDynamicInterviewResults(report);
-      
+
     } catch (error) {
       console.error('Failed to generate final report:', error);
       // Save without report
@@ -1130,11 +1178,11 @@ export default function Dashboard() {
 
   const saveDynamicInterviewResults = (finalReport: any) => {
     if (!user?.email) return;
-    
+
     stopCamera();
-    
+
     const overallScore = calculateDynamicOverallScore(questionHistory);
-    
+
     const interviewData = {
       id: Date.now(),
       date: new Date().toISOString(),
@@ -1158,7 +1206,7 @@ export default function Dashboard() {
 
   const savePartialResults = () => {
     if (!user?.email) return;
-    
+
     const interviewData = {
       id: Date.now(),
       date: new Date().toISOString(),
@@ -1181,22 +1229,22 @@ export default function Dashboard() {
 
   const calculateDynamicOverallScore = (history: any[]) => {
     if (history.length === 0) return 0;
-    
+
     const scores = history
       .map(h => {
         const evalData = h.evaluation?.evaluation || h.evaluation;
         return evalData?.scores?.overall_score || evalData?.overall_score || 0;
       })
       .filter((score): score is number => score !== null && score !== undefined);
-    
+
     if (scores.length === 0) return 0;
-    
+
     const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
     const baseScore = Math.round(averageScore * 10); // Convert 0-10 to 0-100
-    
+
     // Apply tab switch penalty
     const penalty = Math.min(tabSwitchCount * 5, 30);
-    
+
     return Math.max(0, baseScore - penalty);
   };
 
@@ -1204,7 +1252,7 @@ export default function Dashboard() {
   const submitStandardAnswer = async (isTerminated = false) => {
     stopAnswerTimer();
     stopVideoRecording();
-    
+
     const answer = answerBoxRef.current?.value || '';
     if (!answer.trim() && !isTerminated) {
       alert('Please answer the question');
@@ -1219,8 +1267,8 @@ export default function Dashboard() {
       const res = await apiCall('/evaluate', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          question: currentQuestion, 
+        body: JSON.stringify({
+          question: currentQuestion,
           answer: answer,
           skill: skills[currentIndex]?.skill,
           terminated: isTerminated,
@@ -1233,19 +1281,19 @@ export default function Dashboard() {
 
       const data = await res.json();
       const e = data.evaluation || data;
-      
+
       // Store detailed feedback
       setDetailedFeedback(e);
 
-      const violationNote = isTerminated ? "\n\nINTERVIEW TERMINATED DUE TO MULTIPLE TAB SWITCHES" : 
-                           tabSwitchCount > 0 ? `\n\nWarning: Tab switched ${tabSwitchCount} time(s) during this answer` : "";
+      const violationNote = isTerminated ? "\n\nINTERVIEW TERMINATED DUE TO MULTIPLE TAB SWITCHES" :
+        tabSwitchCount > 0 ? `\n\nWarning: Tab switched ${tabSwitchCount} time(s) during this answer` : "";
 
       const feedback = formatDetailedFeedback(e) + violationNote;
-      
+
       setFeedbackText(feedback);
 
-      const newResult = { 
-        skill: skills[currentIndex]?.skill || 'Unknown', 
+      const newResult = {
+        skill: skills[currentIndex]?.skill || 'Unknown',
         capability: e.capability,
         confidence: e.confidence,
         reasoning: e.summary_feedback || e.reasoning,
@@ -1257,10 +1305,10 @@ export default function Dashboard() {
         scores: e.scores || {},
         evaluation: e
       };
-      
+
       setResults([...results, newResult]);
       setInterviewStep('feedback');
-      
+
       // Speak summary
       if (e.summary_feedback) {
         speak(e.summary_feedback);
@@ -1268,21 +1316,21 @@ export default function Dashboard() {
 
     } catch (err: any) {
       console.error("Evaluation error:", err);
-      
+
       const mockEval = {
         capability: 'medium',
         confidence: 'medium',
         summary_feedback: 'Your answer was received but could not be evaluated.',
         scores: { technical_score: 6, confidence_score: 6, communication_score: 6, behavioral_score: 5, overall_score: 6 }
       };
-      
+
       setDetailedFeedback(mockEval);
-      
+
       const mockFeedback = formatDetailedFeedback(mockEval);
       setFeedbackText(mockFeedback);
-      
-      const mockResult = { 
-        skill: skills[currentIndex]?.skill || 'Unknown', 
+
+      const mockResult = {
+        skill: skills[currentIndex]?.skill || 'Unknown',
         capability: 'medium',
         confidence: 'medium',
         reasoning: 'Evaluation service unavailable',
@@ -1293,7 +1341,7 @@ export default function Dashboard() {
         scores: mockEval.scores,
         evaluation: mockEval
       };
-      
+
       setResults([...results, mockResult]);
       setInterviewStep('feedback');
     }
@@ -1302,26 +1350,26 @@ export default function Dashboard() {
   const nextSkill = () => {
     if (currentIndex + 1 < skills.length && !interviewTerminated) {
       setCurrentIndex(currentIndex + 1);
-      
+
       // Use first typical question if available
       const nextSkill = skills[currentIndex + 1];
       let nextQuestion = `Tell me about your experience with ${nextSkill?.skill}`;
-      
+
       if (nextSkill?.typical_questions && nextSkill.typical_questions.length > 0) {
         nextQuestion = nextSkill.typical_questions[0];
       }
-      
+
       setCurrentQuestion(nextQuestion);
       const title = document.getElementById("interview-skillTitle") as HTMLElement;
       if (title) title.innerText = `Skill ${currentIndex + 2}/${skills.length}: ${nextSkill?.skill}`;
       if (answerBoxRef.current) answerBoxRef.current.value = '';
       setDetailedFeedback(null);
-      
+
       setTabSwitchCount(0);
       resetAnswerTimer();
-      
+
       setInterviewStep('interview');
-      
+
       // Speak the question
       speak(nextQuestion);
     } else {
@@ -1331,9 +1379,9 @@ export default function Dashboard() {
 
   const saveStandardInterviewResults = () => {
     if (!user?.email) return;
-    
+
     stopCamera();
-    
+
     const interviewData = {
       id: Date.now(),
       date: new Date().toISOString(),
@@ -1350,25 +1398,25 @@ export default function Dashboard() {
     savedInterviews.push(interviewData);
     localStorage.setItem(`interviews_${user.email}`, JSON.stringify(savedInterviews));
     setPreviousInterviews(savedInterviews);
-    
+
     setInterviewStep('summary');
     setIsInterviewActive(false);
   };
 
   const calculateOverallScore = (results: any[]) => {
     if (results.length === 0) return 0;
-    
+
     const baseScores: Record<string, number> = { expert: 4, strong: 3, medium: 2, weak: 1 };
     let total = results.reduce((sum, r) => sum + (baseScores[r.capability?.toLowerCase()] || 1), 0);
-    
+
     const maxPossible = results.length * 4;
-    
+
     const totalTabSwitches = results.reduce((sum, r) => sum + (r.tabSwitches || 0), 0);
     const penalty = Math.min(totalTabSwitches * 5, 30);
-    
+
     const rawPercentage = (total / maxPossible) * 100;
     const finalPercentage = Math.max(0, rawPercentage - penalty);
-    
+
     return Math.round(finalPercentage);
   };
 
@@ -1388,17 +1436,17 @@ export default function Dashboard() {
 
   const deleteInterview = (index: number) => {
     if (!user?.email || !confirm('Delete this interview record?')) return;
-    
+
     const updated = [...previousInterviews];
     updated.splice(index, 1);
-    
+
     localStorage.setItem(`interviews_${user.email}`, JSON.stringify(updated));
     setPreviousInterviews(updated);
   };
 
   const clearAllInterviews = () => {
     if (!user?.email || !confirm('Clear all interview history?')) return;
-    
+
     localStorage.removeItem(`interviews_${user.email}`);
     setPreviousInterviews([]);
   };
@@ -1425,7 +1473,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: '100vh', padding: '40px 20px', background: '#f8fafc' }}>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .card, .interview-card { 
           background: white; 
           padding: 30px; 
@@ -1708,22 +1757,22 @@ export default function Dashboard() {
             Welcome, <span style={{ color: '#3b82f6' }}>{user?.name}</span>
           </h1>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button 
+            <button
               onClick={() => setCurrentTab('profile')}
               className={`nav-tab ${currentTab === 'profile' ? 'active' : ''}`}
             >
               Profile
             </button>
-            <button 
-              onClick={() => { 
-                setCurrentTab('interview'); 
-                setInterviewStep('start'); 
+            <button
+              onClick={() => {
+                setCurrentTab('interview');
+                setInterviewStep('start');
               }}
               className={`nav-tab ${currentTab === 'interview' ? 'active' : ''}`}
             >
               Interview
             </button>
-            <button 
+            <button
               onClick={logout}
               className="btn btn-danger"
             >
@@ -1735,10 +1784,9 @@ export default function Dashboard() {
         {/* BACKEND STATUS INDICATOR */}
         {currentTab === 'interview' && (
           <div style={{ marginBottom: '20px' }}>
-            <div className={`backend-status ${
-              backendStatus.includes('✓') ? 'status-good' : 
+            <div className={`backend-status ${backendStatus.includes('✓') ? 'status-good' :
               backendStatus.includes('✗') ? 'status-bad' : 'status-checking'
-            }`}>
+              }`}>
               {backendStatus}
             </div>
           </div>
@@ -1749,23 +1797,23 @@ export default function Dashboard() {
           <div className="card">
             <h2 className="section-title">Profile</h2>
             <p style={{ marginBottom: '15px', fontSize: '18px' }}><strong>Email:</strong> {user?.email}</p>
-            
+
             {profile?.resume ? (
               <div>
                 <p style={{ color: '#059669', fontSize: '16px' }}>✓ Resume uploaded</p>
-                <a href={profile.resume} target="_blank" style={{ 
+                <a href={profile.resume} target="_blank" style={{
                   display: 'inline-block',
-                  padding: '10px 20px', 
-                  background: '#3b82f6', 
-                  color: 'white', 
-                  textDecoration: 'none', 
+                  padding: '10px 20px',
+                  background: '#3b82f6',
+                  color: 'white',
+                  textDecoration: 'none',
                   borderRadius: '8px',
                   margin: '15px 0',
                   fontSize: '16px'
                 }}>
                   View PDF
                 </a>
-                <br/>
+                <br />
                 <button onClick={parseResume} disabled={parsing} className="btn" style={{ background: parsing ? '#d1d5db' : '#8b5cf6', marginRight: '10px' }}>
                   {parsing ? 'Parsing...' : 'Parse Resume'}
                 </button>
@@ -1775,10 +1823,10 @@ export default function Dashboard() {
               </div>
             ) : (
               <div>
-                <input ref={fileInputRef} type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ 
-                  width: '100%', 
-                  padding: '12px', 
-                  marginBottom: '15px', 
+                <input ref={fileInputRef} type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{
+                  width: '100%',
+                  padding: '12px',
+                  marginBottom: '15px',
                   border: '2px dashed #d1d5db',
                   borderRadius: '8px',
                   fontSize: '16px'
@@ -1788,7 +1836,7 @@ export default function Dashboard() {
                 </button>
               </div>
             )}
-            
+
             {profile?.parsedResume && (
               <>
                 <hr style={{ margin: '30px 0', border: 'none', height: '2px', background: '#e2e8f0' }} />
@@ -1808,9 +1856,9 @@ export default function Dashboard() {
         {/* INTERVIEW TAB */}
         {currentTab === 'interview' && (
           <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-            {/* QUIT INTERVIEW BUTTON - Show in all steps except start */}
-            {interviewStep !== 'start' && !showQuitConfirm && (
-              <button 
+            {/* QUIT INTERVIEW BUTTON - Show only during active interview steps */}
+            {['interview', 'feedback'].includes(interviewStep) && !showQuitConfirm && (
+              <button
                 onClick={quitInterview}
                 className="btn btn-danger quit-button"
               >
@@ -1848,14 +1896,14 @@ export default function Dashboard() {
                 <p style={{ fontSize: '16px', color: '#3b82f6', marginBottom: '20px' }}>
                   ✨ The interview adapts to your answers in real-time!
                 </p>
-                
+
                 {previousInterviews.length > 0 && (
                   <div style={{ marginTop: '30px', textAlign: 'left' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                       <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>
                         Interview History ({previousInterviews.length})
                       </h3>
-                      <button 
+                      <button
                         onClick={clearAllInterviews}
                         className="btn btn-secondary"
                         style={{ padding: '8px 20px', fontSize: '14px' }}
@@ -1863,7 +1911,7 @@ export default function Dashboard() {
                         Clear All
                       </button>
                     </div>
-                    
+
                     <div className="interview-history">
                       {previousInterviews.slice().reverse().map((interview: any, index: number) => {
                         const originalIndex = previousInterviews.length - 1 - index;
@@ -1885,8 +1933,8 @@ export default function Dashboard() {
                                 <span style={{ fontSize: '14px', color: '#4b5563' }}>
                                   <strong>Date:</strong> {new Date(interview.date).toLocaleDateString()} {new Date(interview.date).toLocaleTimeString()}
                                 </span>
-                                <span style={{ 
-                                  padding: '6px 12px', 
+                                <span style={{
+                                  padding: '6px 12px',
                                   background: interview.terminated ? '#fee2e2' : '#d1fae5',
                                   color: interview.terminated ? '#991b1b' : '#065f46',
                                   borderRadius: '6px',
@@ -1896,8 +1944,8 @@ export default function Dashboard() {
                                   Score: {interview.overallScore || 0}%
                                 </span>
                                 {interview.type === 'dynamic' && (
-                                  <span style={{ 
-                                    padding: '6px 12px', 
+                                  <span style={{
+                                    padding: '6px 12px',
                                     background: '#dbeafe',
                                     color: '#1e40af',
                                     borderRadius: '6px',
@@ -1907,8 +1955,8 @@ export default function Dashboard() {
                                   </span>
                                 )}
                                 {interview.partial && (
-                                  <span style={{ 
-                                    padding: '6px 12px', 
+                                  <span style={{
+                                    padding: '6px 12px',
                                     background: '#fef3c7',
                                     color: '#92400e',
                                     borderRadius: '6px',
@@ -1918,8 +1966,8 @@ export default function Dashboard() {
                                   </span>
                                 )}
                                 {interview.terminated && (
-                                  <span style={{ 
-                                    padding: '6px 12px', 
+                                  <span style={{
+                                    padding: '6px 12px',
                                     background: '#fee2e2',
                                     color: '#991b1b',
                                     borderRadius: '6px',
@@ -1940,16 +1988,16 @@ export default function Dashboard() {
                                 </div>
                               )}
                             </div>
-                            
+
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button 
+                              <button
                                 onClick={() => viewInterviewFeedback(interview)}
-                                className="btn btn-success" 
+                                className="btn btn-success"
                                 style={{ padding: '8px 16px', fontSize: '14px' }}
                               >
                                 View Details
                               </button>
-                              <button 
+                              <button
                                 onClick={() => deleteInterview(originalIndex)}
                                 className="btn btn-danger"
                                 style={{ padding: '8px 12px', fontSize: '14px' }}
@@ -1961,7 +2009,7 @@ export default function Dashboard() {
                         );
                       })}
                     </div>
-                    
+
                     {/* Summary Statistics */}
                     <div className="stats-grid">
                       <div style={{ padding: '20px', background: '#f1f5f9', borderRadius: '8px' }}>
@@ -1983,19 +2031,19 @@ export default function Dashboard() {
                     </div>
                   </div>
                 )}
-                
+
                 <div style={{ marginTop: '40px' }}>
-                  <button 
-                    className="btn btn-success" 
+                  <button
+                    className="btn btn-success"
                     onClick={() => setInterviewStep('upload')}
                     style={{ padding: '16px 40px', fontSize: '18px' }}
                   >
                     Start New Interview
                   </button>
-                  <br/>
-                  <button 
+                  <br />
+                  <button
                     onClick={checkBackendStatus}
-                    className="btn btn-secondary" 
+                    className="btn btn-secondary"
                     style={{ marginTop: '20px', padding: '10px 24px', fontSize: '16px' }}
                   >
                     Check Backend Status
@@ -2011,44 +2059,44 @@ export default function Dashboard() {
                 <p style={{ color: '#6b7280', marginBottom: '20px', fontSize: '16px' }}>
                   The system will analyze your CV and extract relevant skills with experience levels. (PDF or DOCX)
                 </p>
-                
-                <input 
-                  ref={cvFileRef} 
-                  type="file" 
-                  accept=".pdf,.docx" 
-                  style={{ 
-                    width: '100%', 
-                    padding: '16px', 
-                    margin: '15px 0', 
-                    border: '2px dashed #3b82f6', 
+
+                <input
+                  ref={cvFileRef}
+                  type="file"
+                  accept=".pdf,.docx"
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    margin: '15px 0',
+                    border: '2px dashed #3b82f6',
                     borderRadius: '8px',
                     background: '#f8fafc',
                     cursor: 'pointer',
                     fontSize: '16px'
-                  }} 
+                  }}
                 />
-                
-                <div id="interview-uploadStatus" style={{ 
-                  padding: '12px', 
+
+                <div id="interview-uploadStatus" style={{
+                  padding: '12px',
                   margin: '10px 0',
                   borderRadius: '6px',
                   background: '#f8fafc',
                   fontSize: '16px',
                   color: '#6b7280'
                 }}></div>
-                
+
                 <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                  <button 
-                    className="btn btn-secondary" 
+                  <button
+                    className="btn btn-secondary"
                     onClick={() => setInterviewStep('start')}
                   >
                     Back
                   </button>
-                  <button 
-                    className="btn" 
+                  <button
+                    className="btn"
                     onClick={analyzeCV}
                     disabled={isAnalyzing}
-                    style={{ 
+                    style={{
                       background: isAnalyzing ? '#d1d5db' : '#3b82f6',
                     }}
                   >
@@ -2062,11 +2110,11 @@ export default function Dashboard() {
             {interviewStep === 'skills' && (
               <div className="interview-card">
                 <h3 className="section-title" style={{ fontSize: '24px', color: '#10b981' }}>Skills Found In Your CV</h3>
-                <div id="interview-skillsList" style={{ 
-                  display: 'flex', 
-                  flexWrap: 'wrap', 
-                  gap: '10px', 
-                  margin: '20px 0', 
+                <div id="interview-skillsList" style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                  margin: '20px 0',
                   padding: '20px',
                   background: '#f8fafc',
                   borderRadius: '8px',
@@ -2079,16 +2127,16 @@ export default function Dashboard() {
                     </span>
                   ))}
                 </div>
-                
+
                 <div style={{ display: 'flex', gap: '15px' }}>
-                  <button 
-                    className="btn btn-secondary" 
+                  <button
+                    className="btn btn-secondary"
                     onClick={() => setInterviewStep('upload')}
                   >
                     Back
                   </button>
-                  <button 
-                    className="btn btn-success" 
+                  <button
+                    className="btn btn-success"
                     onClick={startInterview}
                   >
                     Start Dynamic Interview
@@ -2126,20 +2174,20 @@ export default function Dashboard() {
                 </div>
 
                 <h4 id="interview-skillTitle" style={{ color: '#059669', fontSize: '18px', fontWeight: '600', marginBottom: '20px' }}>
-                  Skill {currentIndex + 1}/{skills.length}: {skills[currentIndex]?.skill || 'Loading...'} 
+                  Skill {currentIndex + 1}/{skills.length}: {skills[currentIndex]?.skill || 'Loading...'}
                   {skills[currentIndex]?.experience_level && ` (${skills[currentIndex].experience_level})`}
                 </h4>
-                
-                <div style={{ 
-                  background: '#f8fafc', 
-                  padding: '25px', 
-                  borderRadius: '8px', 
+
+                <div style={{
+                  background: '#f8fafc',
+                  padding: '25px',
+                  borderRadius: '8px',
                   marginBottom: '20px',
                   border: '2px solid #e5e7eb'
                 }}>
                   <h4 style={{ marginTop: 0, color: '#334155', fontSize: '16px', fontWeight: '600' }}>Question:</h4>
-                  <p id="interview-questionText" style={{ 
-                    fontSize: '18px', 
+                  <p id="interview-questionText" style={{
+                    fontSize: '18px',
                     lineHeight: '1.6',
                     color: '#1f2937',
                     margin: '10px 0 0 0'
@@ -2151,16 +2199,16 @@ export default function Dashboard() {
                 {/* Camera Section */}
                 {showCamera && (
                   <div className="camera-container">
-                    <video 
-                      ref={videoRef} 
-                      autoPlay 
+                    <video
+                      ref={videoRef}
+                      autoPlay
                       playsInline
                       muted
                     />
                     {isRecording && (
-                      <div style={{ 
-                        position: 'absolute', 
-                        bottom: '15px', 
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '15px',
                         left: '15px',
                         background: 'rgba(0,0,0,0.8)',
                         color: 'white',
@@ -2173,42 +2221,42 @@ export default function Dashboard() {
                     )}
                   </div>
                 )}
-                
-                <textarea 
-                  ref={answerBoxRef} 
-                  className="textarea" 
+
+                <textarea
+                  ref={answerBoxRef}
+                  className="textarea"
                   placeholder="Type your answer here or use voice/video input..."
                   disabled={interviewTerminated || isGeneratingNext}
                 />
-                
+
                 {isGeneratingNext && (
                   <div style={{ textAlign: 'center', margin: '15px 0', color: '#3b82f6', fontSize: '16px' }}>
                     <span className="generating-indicator"></span>
                     Analyzing your answer and generating next question...
                   </div>
                 )}
-                
+
                 <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button 
-                    className="btn" 
+                  <button
+                    className="btn"
                     onClick={startVoiceInput}
                     style={{ background: '#8b5cf6' }}
                     disabled={interviewTerminated || isGeneratingNext}
                   >
                     Voice Input
                   </button>
-                  
+
                   {!showCamera ? (
-                    <button 
-                      className="btn btn-danger" 
+                    <button
+                      className="btn btn-danger"
                       onClick={() => startVideoRecording()}
                       disabled={interviewTerminated || isGeneratingNext}
                     >
                       Start Video Recording
                     </button>
                   ) : (
-                    <button 
-                      className="btn" 
+                    <button
+                      className="btn"
                       onClick={isRecording ? stopVideoRecording : () => startVideoRecording()}
                       style={{ background: isRecording ? '#ef4444' : '#10b981' }}
                       disabled={interviewTerminated || isGeneratingNext}
@@ -2216,9 +2264,9 @@ export default function Dashboard() {
                       {isRecording ? 'Stop Recording' : 'Record Answer'}
                     </button>
                   )}
-                  
-                  <button 
-                    className="btn btn-success" 
+
+                  <button
+                    className="btn btn-success"
                     onClick={() => submitAnswer()}
                     disabled={interviewTerminated || isGeneratingNext}
                   >
@@ -2229,12 +2277,12 @@ export default function Dashboard() {
                 {/* Camera toggle */}
                 {!showCamera && !isRecording && (
                   <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                    <button 
+                    <button
                       onClick={() => setShowCamera(true)}
-                      style={{ 
-                        background: 'none', 
-                        border: 'none', 
-                        color: '#6b7280', 
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#6b7280',
                         textDecoration: 'underline',
                         cursor: 'pointer',
                         fontSize: '14px'
@@ -2244,10 +2292,10 @@ export default function Dashboard() {
                     </button>
                   </div>
                 )}
-                
+
                 {showCamera && !isRecording && (
                   <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                    <button 
+                    <button
                       onClick={stopCamera}
                       className="btn btn-secondary"
                       style={{ padding: '8px 16px', fontSize: '14px' }}
@@ -2263,7 +2311,7 @@ export default function Dashboard() {
             {interviewStep === 'feedback' && (
               <div className="interview-card">
                 <h2 className="section-title" style={{ color: '#3b82f6' }}>Detailed Feedback</h2>
-                
+
                 {/* Score Grid */}
                 {detailedFeedback && (detailedFeedback.scores || detailedFeedback.evaluation?.scores) && (
                   <div className="score-grid">
@@ -2278,7 +2326,7 @@ export default function Dashboard() {
                     })}
                   </div>
                 )}
-                
+
                 {/* Overall Score */}
                 {detailedFeedback && (detailedFeedback.scores?.overall_score || detailedFeedback.evaluation?.scores?.overall_score) && (
                   <div className="score-item" style={{ background: '#3b82f6', color: 'white' }}>
@@ -2288,14 +2336,14 @@ export default function Dashboard() {
                     <div className="score-label" style={{ color: 'white' }}>OVERALL</div>
                   </div>
                 )}
-                
+
                 <div className="feedback-panel">
                   {feedbackText || "Loading feedback..."}
                 </div>
-                
+
                 <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
-                  <button 
-                    className="btn btn-success" 
+                  <button
+                    className="btn btn-success"
                     onClick={nextQuestion}
                     disabled={isGeneratingNext}
                     style={{ padding: '16px 40px', fontSize: '18px' }}
@@ -2312,19 +2360,19 @@ export default function Dashboard() {
                 <h2 className="section-title" style={{ textAlign: 'center', color: interviewTerminated ? '#ef4444' : '#10b981' }}>
                   {interviewTerminated ? 'Interview Terminated' : 'Interview Complete'}
                 </h2>
-                
+
                 {/* Termination Reason */}
                 {interviewTerminated && (
                   <div className="termination-banner" style={{ marginBottom: '20px' }}>
                     ⚠️ Terminated due to multiple tab switches (3 violations)
                   </div>
                 )}
-                
+
                 {/* Overall Score */}
-                <div style={{ 
-                  background: interviewTerminated ? '#fee2e2' : '#f0fdf4', 
-                  padding: '30px', 
-                  borderRadius: '8px', 
+                <div style={{
+                  background: interviewTerminated ? '#fee2e2' : '#f0fdf4',
+                  padding: '30px',
+                  borderRadius: '8px',
                   margin: '20px 0',
                   textAlign: 'center',
                   border: `2px solid ${interviewTerminated ? '#ef4444' : '#a7f3d0'}`
@@ -2343,32 +2391,31 @@ export default function Dashboard() {
                 {skillSummaries.length > 0 && (
                   <div style={{ marginBottom: '30px' }}>
                     <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Skill Summaries</h4>
-                    <div style={{ 
-                      background: '#f8fafc', 
-                      padding: '20px', 
+                    <div style={{
+                      background: '#f8fafc',
+                      padding: '20px',
                       borderRadius: '8px',
                       maxHeight: '400px',
                       overflowY: 'auto',
                       border: '2px solid #e5e7eb'
                     }}>
                       {skillSummaries.map((summary, idx) => (
-                        <div key={idx} className="result-item" style={{ 
-                          borderLeft: `6px solid ${
-                            summary.proficiency_level === 'expert' ? '#8b5cf6' :
+                        <div key={idx} className="result-item" style={{
+                          borderLeft: `6px solid ${summary.proficiency_level === 'expert' ? '#8b5cf6' :
                             summary.proficiency_level === 'advanced' ? '#3b82f6' :
-                            summary.proficiency_level === 'intermediate' ? '#10b981' : '#f59e0b'
-                          }`
+                              summary.proficiency_level === 'intermediate' ? '#10b981' : '#f59e0b'
+                            }`
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <strong style={{ fontSize: '18px' }}>{summary.skill}</strong>
-                            <span style={{ 
-                              padding: '6px 16px', 
+                            <span style={{
+                              padding: '6px 16px',
                               background: summary.proficiency_level === 'expert' ? '#ede9fe' :
-                                        summary.proficiency_level === 'advanced' ? '#dbeafe' :
-                                        summary.proficiency_level === 'intermediate' ? '#d1fae5' : '#fef3c7',
+                                summary.proficiency_level === 'advanced' ? '#dbeafe' :
+                                  summary.proficiency_level === 'intermediate' ? '#d1fae5' : '#fef3c7',
                               color: summary.proficiency_level === 'expert' ? '#6d28d9' :
-                                     summary.proficiency_level === 'advanced' ? '#1e40af' :
-                                     summary.proficiency_level === 'intermediate' ? '#065f46' : '#92400e',
+                                summary.proficiency_level === 'advanced' ? '#1e40af' :
+                                  summary.proficiency_level === 'intermediate' ? '#065f46' : '#92400e',
                               borderRadius: '6px',
                               fontWeight: '600',
                               fontSize: '14px'
@@ -2411,32 +2458,31 @@ export default function Dashboard() {
                 {interviewMode !== 'dynamic' && results.length > 0 && (
                   <div style={{ marginBottom: '30px' }}>
                     <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Skill Performance</h4>
-                    <div style={{ 
-                      background: '#f8fafc', 
-                      padding: '20px', 
+                    <div style={{
+                      background: '#f8fafc',
+                      padding: '20px',
                       borderRadius: '8px',
                       maxHeight: '400px',
                       overflowY: 'auto',
                       border: '2px solid #e5e7eb'
                     }}>
                       {results.map((r, i) => (
-                        <div key={i} className="result-item" style={{ 
-                          borderLeft: `6px solid ${
-                            r.capability === 'expert' ? '#8b5cf6' :
-                            r.capability === 'strong' ? '#10b981' : 
-                            r.capability === 'medium' ? '#f59e0b' : '#ef4444'
-                          }`
+                        <div key={i} className="result-item" style={{
+                          borderLeft: `6px solid ${r.capability === 'expert' ? '#8b5cf6' :
+                            r.capability === 'strong' ? '#10b981' :
+                              r.capability === 'medium' ? '#f59e0b' : '#ef4444'
+                            }`
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <strong style={{ fontSize: '18px' }}>{r.skill}</strong>
-                            <span style={{ 
-                              padding: '6px 16px', 
+                            <span style={{
+                              padding: '6px 16px',
                               background: r.capability === 'expert' ? '#ede9fe' :
-                                        r.capability === 'strong' ? '#d1fae5' : 
-                                        r.capability === 'medium' ? '#fef3c7' : '#fee2e2',
+                                r.capability === 'strong' ? '#d1fae5' :
+                                  r.capability === 'medium' ? '#fef3c7' : '#fee2e2',
                               color: r.capability === 'expert' ? '#6d28d9' :
-                                    r.capability === 'strong' ? '#065f46' : 
-                                    r.capability === 'medium' ? '#92400e' : '#991b1b',
+                                r.capability === 'strong' ? '#065f46' :
+                                  r.capability === 'medium' ? '#92400e' : '#991b1b',
                               borderRadius: '6px',
                               fontWeight: '600',
                               fontSize: '14px'
@@ -2464,9 +2510,9 @@ export default function Dashboard() {
                 {interviewMode === 'dynamic' && questionHistory.length > 0 && (
                   <div style={{ marginBottom: '30px' }}>
                     <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Interview Summary</h4>
-                    <div style={{ 
-                      background: '#f8fafc', 
-                      padding: '20px', 
+                    <div style={{
+                      background: '#f8fafc',
+                      padding: '20px',
                       borderRadius: '8px',
                       maxHeight: '400px',
                       overflowY: 'auto',
@@ -2475,23 +2521,22 @@ export default function Dashboard() {
                       {questionHistory.map((item, i) => {
                         const evalData = item.evaluation?.evaluation || item.evaluation;
                         return (
-                          <div key={i} className="result-item" style={{ 
-                            borderLeft: `6px solid ${
-                              evalData?.capability === 'expert' ? '#8b5cf6' :
-                              evalData?.capability === 'strong' ? '#10b981' : 
-                              evalData?.capability === 'medium' ? '#f59e0b' : '#ef4444'
-                            }`
+                          <div key={i} className="result-item" style={{
+                            borderLeft: `6px solid ${evalData?.capability === 'expert' ? '#8b5cf6' :
+                              evalData?.capability === 'strong' ? '#10b981' :
+                                evalData?.capability === 'medium' ? '#f59e0b' : '#ef4444'
+                              }`
                           }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <strong style={{ fontSize: '18px' }}>{item.skill}</strong>
-                              <span style={{ 
-                                padding: '6px 16px', 
+                              <span style={{
+                                padding: '6px 16px',
                                 background: evalData?.capability === 'expert' ? '#ede9fe' :
-                                          evalData?.capability === 'strong' ? '#d1fae5' : 
-                                          evalData?.capability === 'medium' ? '#fef3c7' : '#fee2e2',
+                                  evalData?.capability === 'strong' ? '#d1fae5' :
+                                    evalData?.capability === 'medium' ? '#fef3c7' : '#fee2e2',
                                 color: evalData?.capability === 'expert' ? '#6d28d9' :
-                                      evalData?.capability === 'strong' ? '#065f46' : 
-                                      evalData?.capability === 'medium' ? '#92400e' : '#991b1b',
+                                  evalData?.capability === 'strong' ? '#065f46' :
+                                    evalData?.capability === 'medium' ? '#92400e' : '#991b1b',
                                 borderRadius: '6px',
                                 fontWeight: '600',
                                 fontSize: '14px'
@@ -2513,8 +2558,8 @@ export default function Dashboard() {
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
-                  <button 
-                    className="btn btn-secondary" 
+                  <button
+                    className="btn btn-secondary"
                     onClick={() => {
                       setInterviewStep('start');
                       stopCamera();
@@ -2525,8 +2570,8 @@ export default function Dashboard() {
                   >
                     Back to Dashboard
                   </button>
-                  <button 
-                    className="btn btn-success" 
+                  <button
+                    className="btn btn-success"
                     onClick={() => {
                       setInterviewStep('upload');
                       stopCamera();
