@@ -31,7 +31,8 @@ export default function ProfileSetup() {
     }
 
     try {
-      const res = await fetch("/api/profile", {
+      const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+      const res = await fetch(`${BACKEND}/api/profile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

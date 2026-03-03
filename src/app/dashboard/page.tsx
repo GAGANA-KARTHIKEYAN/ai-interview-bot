@@ -71,7 +71,7 @@ export default function Dashboard() {
   // ========== PROFILE FUNCTIONS ==========
   const refreshProfile = useCallback(() => {
     if (!user?.email) return;
-    fetch('/api/profile', {
+    fetch(`${BACKEND}/api/profile`, {
       headers: { 'email': user.email },
       cache: 'no-store'
     })
@@ -79,12 +79,18 @@ export default function Dashboard() {
         if (!res.ok) throw new Error('Profile fetch failed');
         return res.json();
       })
-      .then(setProfile)
+      .then(data => {
+        // Correct the resume URL to include the backend prefix if it's a relative path
+        if (data.resume && data.resume.startsWith('/uploads')) {
+          data.resume = `${BACKEND}${data.resume}`;
+        }
+        setProfile(data);
+      })
       .catch(err => {
         console.error('Profile refresh failed:', err);
         setProfile({ email: user?.email, resume: null, parsedResume: null });
       });
-  }, [user?.email]);
+  }, [user?.email, BACKEND]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -410,7 +416,13 @@ export default function Dashboard() {
     formData.append('resume', file);
     formData.append('email', user.email);
     try {
-      const res = await fetch('/api/resume', { method: 'POST', body: formData });
+      const res = await fetch(`${BACKEND}/api/resume`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'email': user.email
+        }
+      });
       const data = await res.json();
       if (data.success) {
         setFile(null);
@@ -429,10 +441,12 @@ export default function Dashboard() {
   const deleteResume = async () => {
     if (!user?.email || !confirm('Delete resume?')) return;
     try {
-      const res = await fetch('/api/resume', {
+      const res = await fetch(`${BACKEND}/api/resume`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email })
+        headers: {
+          'Content-Type': 'application/json',
+          'email': user.email
+        }
       });
       if (res.ok) {
         refreshProfile();
@@ -447,7 +461,7 @@ export default function Dashboard() {
     if (!profile?.resume) return alert('Upload resume first');
     setParsing(true);
     try {
-      const res = await fetch('/api/resume/parse', {
+      const res = await fetch(`${BACKEND}/api/resume/parse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email })
