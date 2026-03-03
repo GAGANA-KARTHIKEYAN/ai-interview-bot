@@ -20,9 +20,6 @@ export default function Signup() {
         method: 'POST',
         body: JSON.stringify({ type: 'signup', email, password, name }),
       });
-
-      // Assuming apiClient handles success/error internally and throws if not successful
-      // If it reaches here, it means the call was successful
       router.push('/login');
     } catch (err: any) {
       setError(err.message || 'Server error. Try again.');
@@ -36,72 +33,104 @@ export default function Signup() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#f3f4f6'
+      background: 'radial-gradient(circle at top right, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+      padding: '20px',
+      fontFamily: "'Inter', sans-serif"
     }}>
       <div style={{
-        padding: '40px',
-        background: 'white',
-        borderRadius: '12px',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+        padding: '50px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        backdropFilter: 'blur(15px)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '24px',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
         width: '100%',
-        maxWidth: '400px'
+        maxWidth: '450px',
+        color: 'white'
       }}>
-        <h1 style={{ textAlign: 'center', marginBottom: '30px', color: '#1f2937' }}>Sign Up</h1>
+        <h1 style={{
+          textAlign: 'center',
+          marginBottom: '40px',
+          fontSize: '32px',
+          fontWeight: '700',
+          background: 'linear-gradient(to right, #60a5fa, #a855f7)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}>
+          Get Started
+        </h1>
 
-        <input
-          placeholder="Full Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{
-            width: '100%', padding: '12px', marginBottom: '16px', border: '1px solid #d1d5db',
-            borderRadius: '8px', fontSize: '16px'
-          }}
-        />
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Full Name</label>
+          <input
+            placeholder="John Doe"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={{
+              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
+              fontSize: '16px', color: 'white', outline: 'none'
+            }}
+          />
+        </div>
 
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{
-            width: '100%', padding: '12px', marginBottom: '16px', border: '1px solid #d1d5db',
-            borderRadius: '8px', fontSize: '16px'
-          }}
-        />
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Email Address</label>
+          <input
+            type="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{
+              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
+              fontSize: '16px', color: 'white', outline: 'none'
+            }}
+          />
+        </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{
-            width: '100%', padding: '12px', marginBottom: '20px', border: '1px solid #d1d5db',
-            borderRadius: '8px', fontSize: '16px'
-          }}
-        />
+        <div style={{ marginBottom: '30px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Password</label>
+          <input
+            type="password"
+            placeholder="Min 6 characters"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{
+              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
+              fontSize: '16px', color: 'white', outline: 'none'
+            }}
+          />
+        </div>
 
         {error && (
-          <p style={{ color: '#ef4444', marginBottom: '16px', textAlign: 'center' }}>
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
+            color: '#fca5a5', padding: '12px', borderRadius: '10px', marginBottom: '20px', textAlign: 'center'
+          }}>
             {error}
-          </p>
+          </div>
         )}
 
         <button
           onClick={handleSignup}
           disabled={loading || !name || !email || !password}
           style={{
-            width: '100%', padding: '14px', background: '#10b981', color: 'white',
-            border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '500',
+            width: '100%', padding: '16px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            color: 'white', border: 'none', borderRadius: '14px', fontSize: '18px', fontWeight: '600',
             cursor: loading || !name || !email || !password ? 'not-allowed' : 'pointer',
-            opacity: loading || !name || !email || !password ? 0.6 : 1
+            opacity: loading || !name || !email || !password ? 0.6 : 1,
+            boxShadow: '0 10px 15px -3px rgba(16, 185, 129, 0.3)',
+            transition: 'transform 0.2s'
           }}
         >
-          {loading ? 'Creating...' : 'Create Account'}
+          {loading ? 'Creating Experience...' : 'Create Account'}
         </button>
 
-        <p style={{ textAlign: 'center', marginTop: '20px', color: '#6b7280' }}>
+        <p style={{ textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.5)' }}>
           Already have an account?{' '}
-          <Link href="/login" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+          <Link href="/login" style={{ color: '#10b981', textDecoration: 'none', fontWeight: '500' }}>
             Login
           </Link>
         </p>

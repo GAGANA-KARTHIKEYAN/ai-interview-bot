@@ -22,6 +22,7 @@ export default function Login() {
 
       if (data.success) {
         localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('email', data.user.email); // Consistently set email
         router.push('/dashboard');
       } else {
         setError(data.error || 'Login failed');
@@ -38,63 +39,91 @@ export default function Login() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#f3f4f6'
+      background: 'radial-gradient(circle at bottom right, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+      padding: '20px',
+      fontFamily: "'Inter', sans-serif"
     }}>
       <div style={{
-        padding: '40px',
-        background: 'white',
-        borderRadius: '12px',
-        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+        padding: '50px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        backdropFilter: 'blur(15px)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '24px',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
         width: '100%',
-        maxWidth: '400px'
+        maxWidth: '450px',
+        color: 'white'
       }}>
-        <h1 style={{ textAlign: 'center', marginBottom: '30px', color: '#1f2937' }}>Login</h1>
+        <h1 style={{
+          textAlign: 'center',
+          marginBottom: '40px',
+          fontSize: '32px',
+          fontWeight: '700',
+          background: 'linear-gradient(to right, #60a5fa, #a855f7)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}>
+          Welcome Back
+        </h1>
 
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{
-            width: '100%', padding: '12px', marginBottom: '16px', border: '1px solid #d1d5db',
-            borderRadius: '8px', fontSize: '16px'
-          }}
-        />
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Email Address</label>
+          <input
+            type="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{
+              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
+              fontSize: '16px', color: 'white', outline: 'none'
+            }}
+          />
+        </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{
-            width: '100%', padding: '12px', marginBottom: '20px', border: '1px solid #d1d5db',
-            borderRadius: '8px', fontSize: '16px'
-          }}
-        />
+        <div style={{ marginBottom: '30px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Password</label>
+          <input
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{
+              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
+              fontSize: '16px', color: 'white', outline: 'none'
+            }}
+          />
+        </div>
 
         {error && (
-          <p style={{ color: '#ef4444', marginBottom: '16px', textAlign: 'center' }}>
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
+            color: '#fca5a5', padding: '12px', borderRadius: '10px', marginBottom: '20px', textAlign: 'center'
+          }}>
             {error}
-          </p>
+          </div>
         )}
 
         <button
           onClick={handleLogin}
           disabled={loading || !email || !password}
           style={{
-            width: '100%', padding: '14px', background: '#3b82f6', color: 'white',
-            border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '500',
+            width: '100%', padding: '16px', background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            color: 'white', border: 'none', borderRadius: '14px', fontSize: '18px', fontWeight: '600',
             cursor: loading || !email || !password ? 'not-allowed' : 'pointer',
-            opacity: loading || !email || !password ? 0.6 : 1
+            opacity: loading || !email || !password ? 0.6 : 1,
+            boxShadow: '0 10px 15px -3px rgba(59, 130, 246, 0.3)',
+            transition: 'transform 0.2s'
           }}
         >
-          {loading ? 'Logging in...' : 'Login'}
+          {loading ? 'Authenticating...' : 'Sign In'}
         </button>
 
-        <p style={{ textAlign: 'center', marginTop: '20px', color: '#6b7280' }}>
-          Don't have an account?{' '}
-          <Link href="/signup" style={{ color: '#3b82f6', textDecoration: 'none' }}>
-            Sign up
+        <p style={{ textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.5)' }}>
+          New to the platform?{' '}
+          <Link href="/signup" style={{ color: '#60a5fa', textDecoration: 'none', fontWeight: '500' }}>
+            Create Account
           </Link>
         </p>
       </div>
