@@ -77,7 +77,7 @@ async def auth(payload: dict):
     password = payload.get("password")
     name = payload.get("name")
     
-    users = get_users()
+    users = cast(List[Dict[str, Any]], get_users())
     
     if auth_type == "signup":
         if not email:
