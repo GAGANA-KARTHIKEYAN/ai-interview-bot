@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api';
 import Link from 'next/link';
 
 export default function Login() {
@@ -14,13 +15,10 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
-      const res = await fetch(`${BACKEND}/api/auth`, {
+      const data = await apiClient('/api/auth', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'login', email, password }),
       });
-      const data = await res.json();
 
       if (data.success) {
         localStorage.setItem('user', JSON.stringify(data.user));

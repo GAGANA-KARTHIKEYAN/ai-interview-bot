@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api';
 import Link from 'next/link';
 
 export default function Signup() {
@@ -15,21 +16,16 @@ export default function Signup() {
     setError('');
     setLoading(true);
     try {
-      const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
-      const res = await fetch(`${BACKEND}/api/auth`, {
+      const data = await apiClient('/api/auth', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'signup', email, password, name }),
       });
-      const data = await res.json();
 
-      if (data.success) {
-        router.push('/login');
-      } else {
-        setError(data.error || 'Signup failed');
-      }
-    } catch (err) {
-      setError('Network error');
+      // Assuming apiClient handles success/error internally and throws if not successful
+      // If it reaches here, it means the call was successful
+      router.push('/login');
+    } catch (err: any) {
+      setError(err.message || 'Server error. Try again.');
     }
     setLoading(false);
   };

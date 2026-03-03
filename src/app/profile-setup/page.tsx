@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from 'next/navigation';
+import { apiClient } from "@/lib/api";
 
 export default function ProfileSetup() {
   const router = useRouter();
@@ -31,10 +32,8 @@ export default function ProfileSetup() {
     }
 
     try {
-      const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
-      const res = await fetch(`${BACKEND}/api/profile`, {
+      const data = await apiClient('/api/profile', {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
           name,
@@ -43,20 +42,13 @@ export default function ProfileSetup() {
         }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setMessage(data.error || "Failed to save profile");
-        return;
-      }
-
-      setMessage("✅ Profile saved successfully");
-
-      setTimeout(() => {
+      if (data.success) {
         router.push("/dashboard");
-      }, 1000);
-    } catch (err) {
-      setMessage("Server error. Try again.");
+      } else {
+        setMessage(data.error || "Failed to save profile");
+      }
+    } catch (err: any) {
+      setMessage(err.message || "Server error. Try again.");
     }
   }
 

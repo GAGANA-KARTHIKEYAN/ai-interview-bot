@@ -1,6 +1,6 @@
-'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api';
 
 export default function Dashboard() {
   // ========== USER STATE ==========
@@ -39,7 +39,6 @@ export default function Dashboard() {
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
   // ========== VOICE SYNTHESIS ============
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
 
@@ -69,28 +68,25 @@ export default function Dashboard() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // ========== PROFILE FUNCTIONS ==========
-  const refreshProfile = useCallback(() => {
+  const refreshProfile = useCallback(async () => {
     if (!user?.email) return;
-    fetch(`${BACKEND}/api/profile`, {
-      headers: { 'email': user.email },
-      cache: 'no-store'
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Profile fetch failed');
-        return res.json();
-      })
-      .then(data => {
-        // Correct the resume URL to include the backend prefix if it's a relative path
-        if (data.resume && data.resume.startsWith('/uploads')) {
-          data.resume = `${BACKEND}${data.resume}`;
-        }
-        setProfile(data);
-      })
-      .catch(err => {
-        console.error('Profile refresh failed:', err);
-        setProfile({ email: user?.email, resume: null, parsedResume: null });
+    try {
+      const data = await apiClient('/api/profile', {
+        email: user.email,
+        cache: 'no-store'
       });
-  }, [user?.email, BACKEND]);
+
+      // Correct the resume URL to include the backend prefix if it's a relative path
+      const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      if (data.resume && data.resume.startsWith('/uploads')) {
+        data.resume = `${BACKEND}${data.resume}`;
+      }
+      setProfile(data);
+    } catch (err) {
+      console.error('Profile refresh failed:', err);
+      setProfile({ email: user?.email, resume: null, parsedResume: null });
+    }
+  }, [user?.email]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -395,15 +391,12 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      const response = await fetch(`${BACKEND}/health`, {
+      // apiClient throws if response not ok
+      await apiClient('/health', {
         method: 'GET',
-        signal: AbortSignal.timeout(3000)
+        // signal: AbortSignal.timeout(3000) // apiClient handles timeout or we can pass it
       });
-      if (response.ok) {
-        setBackendStatus('✓ Backend is running');
-      } else {
-        setBackendStatus('✗ Backend error');
-      }
+      setBackendStatus('✓ Backend is running');
     } catch (err) {
       setBackendStatus('✗ Backend not running');
     }
@@ -416,14 +409,11 @@ export default function Dashboard() {
     formData.append('resume', file);
     formData.append('email', user.email);
     try {
-      const res = await fetch(`${BACKEND}/api/resume`, {
+      const data = await apiClient('/api/resume', {
         method: 'POST',
         body: formData,
-        headers: {
-          'email': user.email
-        }
+        email: user.email // apiClient puts this in the header
       });
-      const data = await res.json();
       if (data.success) {
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -432,8 +422,8 @@ export default function Dashboard() {
       } else {
         alert('Upload failed: ' + data.error);
       }
-    } catch (err) {
-      alert('Upload error');
+    } catch (err: any) {
+      alert('Upload error: ' + (err.message || 'Server error'));
     }
     setUploading(false);
   };
@@ -441,19 +431,14 @@ export default function Dashboard() {
   const deleteResume = async () => {
     if (!user?.email || !confirm('Delete resume?')) return;
     try {
-      const res = await fetch(`${BACKEND}/api/resume`, {
+      await apiClient('/api/resume', {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'email': user.email
-        }
+        email: user.email
       });
-      if (res.ok) {
-        refreshProfile();
-        router.refresh();
-      }
-    } catch (err) {
-      alert('Delete error');
+      refreshProfile();
+      router.refresh();
+    } catch (err: any) {
+      alert('Delete error: ' + (err.message || 'Server error'));
     }
   };
 
@@ -461,18 +446,17 @@ export default function Dashboard() {
     if (!profile?.resume) return alert('Upload resume first');
     setParsing(true);
     try {
-      const res = await fetch(`${BACKEND}/api/resume/parse`, {
+      const data = await apiClient('/api/resume/parse', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email })
+        body: JSON.stringify({ email: user.email }),
+        email: user.email
       });
-      const data = await res.json();
       if (data.success) {
         refreshProfile();
         router.refresh();
       }
-    } catch (err) {
-      alert('Parse error');
+    } catch (err: any) {
+      alert('Parse error: ' + (err.message || 'Server error'));
     }
     setParsing(false);
   };
@@ -528,19 +512,10 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const res = await fetch(`${BACKEND}/upload-and-analyze`, {
+      const data = await apiClient('/upload-and-analyze', {
         method: "POST",
-        body: fd,
-        signal: controller.signal
+        body: fd
       });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const data = await res.json();
       console.log("Backend response:", data);
 
       // Get skills from response
@@ -628,16 +603,13 @@ export default function Dashboard() {
     setDetailedFeedback(null);
 
     try {
-      const response = await fetch(`${BACKEND}/start-interview`, {
+      const data = await apiClient('/start-interview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skills: skills,
           userLevel: 'intermediate'
         })
       });
-
-      const data = await response.json();
 
       if (data.success) {
         setInterviewSession(data.interview_state);
@@ -798,9 +770,8 @@ export default function Dashboard() {
 
     try {
       // Evaluate this answer
-      const evalResponse = await fetch(`${BACKEND}/evaluate`, {
+      const evalData = await apiClient('/evaluate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: currentQuestion,
           answer: answer,
@@ -808,8 +779,6 @@ export default function Dashboard() {
           history: questionHistory
         })
       });
-
-      const evalData = await evalResponse.json();
       const evaluation = evalData.evaluation || evalData;
 
       // Store detailed feedback
@@ -1018,9 +987,8 @@ export default function Dashboard() {
       const skillsRemaining = skills.slice(currentIndex + 1).map(s => s.skill);
 
       // Generate next question
-      const nextResponse = await fetch(`${BACKEND}/next-question`, {
+      const nextData = await apiClient('/next-question', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skill: skills[currentIndex]?.skill,
           answer: questionHistory[questionHistory.length - 1]?.answer || '',
@@ -1029,8 +997,6 @@ export default function Dashboard() {
           skillsRemaining: skillsRemaining
         })
       });
-
-      const nextData = await nextResponse.json();
 
       if (nextData.success) {
         setCurrentAnalysis(nextData.analysis || {});
@@ -1116,17 +1082,14 @@ export default function Dashboard() {
 
   const generateSkillSummary = async (skill: string) => {
     try {
-      const response = await fetch(`${BACKEND}/generate-skill-summary`, {
+      const summary = await apiClient('/generate-skill-summary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skill: skill,
           history: questionHistory,
           evaluations: questionHistory.map(h => h.evaluation)
         })
       });
-
-      const summary = await response.json();
       setSkillSummaries([...skillSummaries, summary]);
 
     } catch (error) {
@@ -1136,9 +1099,8 @@ export default function Dashboard() {
 
   const generateFinalReport = async () => {
     try {
-      const response = await fetch(`${BACKEND}/final-report`, {
+      const report = await apiClient('/final-report', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skills: skills,
           all_qa: questionHistory,
@@ -1146,8 +1108,6 @@ export default function Dashboard() {
           skillSummaries: skillSummaries
         })
       });
-
-      const report = await response.json();
 
       // Save interview results
       saveDynamicInterviewResults(report);
@@ -1244,25 +1204,16 @@ export default function Dashboard() {
     }
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-      const res = await fetch(`${BACKEND}/evaluate`, {
+      const data = await apiClient('/evaluate', {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: currentQuestion,
           answer: answer,
           skill: skills[currentIndex]?.skill,
           terminated: isTerminated,
           tabSwitches: tabSwitchCount
-        }),
-        signal: controller.signal
+        })
       });
-
-      clearTimeout(timeoutId);
-
-      const data = await res.json();
       const e = data.evaluation || data;
 
       // Store detailed feedback
