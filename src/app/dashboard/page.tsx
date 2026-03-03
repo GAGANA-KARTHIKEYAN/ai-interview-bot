@@ -76,10 +76,9 @@ export default function Dashboard() {
         cache: 'no-store'
       });
 
-      // Correct the resume URL to include the backend prefix if it's a relative path
-      const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-      if (data.resume && data.resume.startsWith('/uploads')) {
-        data.resume = `${BACKEND}${data.resume}`;
+      // Correct the resume URL for same-origin Vercel
+      if (data.resume && data.resume.startsWith('/api/uploads')) {
+        // No modification needed as it's already a correct relative path
       }
       setProfile(data);
     } catch (err) {
@@ -1406,102 +1405,105 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', padding: '40px 20px', background: '#f8fafc' }}>
+    <div style={{
+      minHeight: '100vh',
+      padding: '40px 20px',
+      background: 'radial-gradient(circle at top left, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+      fontFamily: "'Inter', sans-serif"
+    }}>
       <style dangerouslySetInnerHTML={{
         __html: `
         .card, .interview-card { 
-          background: white; 
+          background: rgba(255, 255, 255, 0.03); 
           padding: 30px; 
-          border-radius: 12px; 
-          box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
-          margin-bottom: 20px; 
-          border: 1px solid #e5e7eb;
+          border-radius: 20px; 
+          backdrop-filter: blur(15px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          margin-bottom: 30px; 
+          color: white;
         }
         .hidden { display: none !important; }
         .skill-tag { 
           display: inline-block; 
-          background: #e0e7ff; 
-          color: #1e3a8a; 
+          background: rgba(96, 165, 250, 0.1); 
+          color: #60a5fa; 
           padding: 8px 16px; 
-          border-radius: 20px; 
+          border-radius: 12px; 
           margin: 6px; 
           font-size: 14px;
+          border: 1px solid rgba(96, 165, 250, 0.2);
           font-weight: 500; 
         }
         .btn { 
           padding: 12px 24px; 
-          border-radius: 8px; 
+          border-radius: 12px; 
           border: none; 
-          background: #3b82f6; 
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); 
           color: white; 
           font-size: 16px; 
-          font-weight: 500;
+          font-weight: 600;
           cursor: pointer; 
           margin: 5px; 
           transition: all 0.2s;
+          box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
         }
-        .btn:hover { background: #2563eb; transform: translateY(-1px); }
-        .btn-secondary { background: #6b7280; }
-        .btn-secondary:hover { background: #4b5563; }
-        .btn-success { background: #10b981; }
-        .btn-success:hover { background: #059669; }
-        .btn-danger { background: #ef4444; }
-        .btn-danger:hover { background: #dc2626; }
-        .btn-warning { background: #f59e0b; color: white; }
-        .btn-warning:hover { background: #d97706; }
-        .btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 15px 20px -5px rgba(59, 130, 246, 0.4); }
+        .btn-secondary { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
+        .btn-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3); }
+        .btn-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.3); }
+        .btn-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.3); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
         .textarea { 
           width: 100%; 
           height: 160px; 
-          padding: 16px; 
-          border-radius: 8px; 
-          border: 2px solid #d1d5db; 
+          padding: 20px; 
+          border-radius: 16px; 
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: white;
           font-family: inherit; 
           resize: vertical; 
-          margin: 15px 0; 
+          margin: 20px 0; 
           font-size: 16px;
+          outline: none;
           transition: border-color 0.2s;
         }
-        .textarea:focus {
-          outline: none;
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
-        }
+        .textarea:focus { border-color: #3b82f6; }
         .backend-status {
           padding: 12px 20px;
-          border-radius: 8px;
+          border-radius: 12px;
           margin: 10px 0;
-          font-size: 16px;
+          font-size: 14px;
+          font-weight: 500;
+          text-align: center;
         }
-        .status-good { background: #d1fae5; color: #065f46; }
-        .status-bad { background: #fee2e2; color: #991b1b; }
-        .status-checking { background: #fef3c7; color: #92400e; }
+        .status-good { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .status-bad { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+        .status-checking { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
         .camera-container {
           width: 100%;
           max-width: 640px;
-          margin: 20px auto;
-          border-radius: 12px;
+          margin: 24px auto;
+          border-radius: 20px;
           overflow: hidden;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-          background: #1e293b;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          background: #000;
+          border: 1px solid rgba(255, 255, 255, 0.1);
           position: relative;
         }
-        .camera-container video {
-          width: 100%;
-          display: block;
-        }
+        .camera-container video { width: 100%; display: block; }
         .timer-display {
           font-size: 24px;
-          font-weight: 600;
+          font-weight: 700;
           text-align: center;
           padding: 12px;
-          background: #1e293b;
-          color: white;
-          border-radius: 8px;
-          margin: 15px 0;
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          border-radius: 12px;
+          margin: 20px 0;
+          border: 1px solid rgba(239, 68, 68, 0.2);
         }
         .recording-indicator {
           display: inline-block;
@@ -1513,129 +1515,59 @@ export default function Dashboard() {
           animation: pulse 1s infinite;
         }
         @keyframes pulse {
-          0% { opacity: 1; }
-          50% { opacity: 0.5; }
-          100% { opacity: 1; }
-        }
-        .warning-banner {
-          background: #fee2e2;
-          color: #991b1b;
-          padding: 16px;
-          border-radius: 8px;
-          margin: 15px 0;
-          border: 2px solid #ef4444;
-          text-align: center;
-          font-weight: 600;
-          font-size: 16px;
-          animation: pulse-warning 1s infinite;
-        }
-        @keyframes pulse-warning {
-          0% { background: #fee2e2; }
-          50% { background: #fecaca; }
-          100% { background: #fee2e2; }
-        }
-        .termination-banner {
-          background: #7f1d1d;
-          color: white;
-          padding: 20px;
-          border-radius: 8px;
-          margin: 15px 0;
-          text-align: center;
-          font-weight: 600;
-          font-size: 18px;
-          border: 2px solid #ef4444;
-        }
-        .tab-switch-counter {
-          font-size: 14px;
-          color: #6b7280;
-          text-align: right;
-          margin: 5px 0;
-          font-weight: 500;
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.2); }
+          100% { opacity: 1; transform: scale(1); }
         }
         .nav-tab {
           padding: 12px 24px;
-          background: #e5e7eb;
-          color: #374151;
-          border: none;
-          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.05);
+          color: rgba(255, 255, 255, 0.6);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
           cursor: pointer;
-          font-weight: 500;
+          font-weight: 600;
           transition: all 0.2s;
           font-size: 16px;
         }
         .nav-tab.active {
-          background: #3b82f6;
+          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
           color: white;
+          border: none;
+          box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
         }
         .section-title {
-          font-size: 28px;
-          font-weight: 700;
-          color: #1e293b;
+          font-size: 32px;
+          font-weight: 800;
+          color: white;
           margin-bottom: 25px;
-        }
-        .result-item {
-          padding: 20px;
-          margin: 10px 0;
-          background: white;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          font-size: 16px;
-        }
-        .interview-history {
-          max-height: 500px;
-          overflow-y: auto;
-          padding: 5px;
-        }
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 20px;
-          margin-top: 20px;
+          letter-spacing: -0.02em;
         }
         .feedback-panel {
-          background: #f8fafc;
+          background: rgba(0, 0, 0, 0.2);
           padding: 30px;
-          border-radius: 12px;
+          border-radius: 16px;
           white-space: pre-wrap;
           max-height: 600px;
           overflow-y: auto;
           margin-bottom: 20px;
-          border: 2px solid #e5e7eb;
+          border: 1px solid rgba(255, 255, 255, 0.1);
           font-size: 16px;
           line-height: 1.8;
-          font-family: 'Courier New', monospace;
-        }
-        .generating-indicator {
-          display: inline-block;
-          width: 20px;
-          height: 20px;
-          border: 3px solid #3b82f6;
-          border-top-color: transparent;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-          margin-right: 10px;
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        .score-card {
-          background: white;
-          border-radius: 12px;
-          padding: 20px;
-          border: 1px solid #e5e7eb;
-          margin-bottom: 20px;
-        }
-        .score-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 15px;
-          margin: 20px 0;
+          color: rgba(255, 255, 255, 0.9);
         }
         .score-item {
-          background: #f1f5f9;
-          padding: 15px;
-          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.03);
+          padding: 20px;
+          border-radius: 16px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
           text-align: center;
+        }
+        #interview-skillTitle {
+          background: linear-gradient(to right, #60a5fa, #a855f7);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          font-weight: 800;
         }
         .score-value {
           font-size: 36px;
@@ -1686,9 +1618,9 @@ export default function Dashboard() {
 
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* HEADER */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-          <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#1e293b' }}>
-            Welcome, <span style={{ color: '#3b82f6' }}>{user?.name}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '50px' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: '800', color: 'white' }}>
+            Welcome back, <span style={{ background: 'linear-gradient(to right, #60a5fa, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{user?.name}</span>
           </h1>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
