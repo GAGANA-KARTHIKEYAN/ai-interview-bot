@@ -2,9 +2,7 @@ fastapi==0.115.0
 uvicorn==0.30.6
 python-multipart==0.0.9
 pdfplumber==0.11.9
-groq==0.11.0
-boto3
-botocore
+groq==0.31.0
 pydantic==2.12.5
 python-dotenv==1.2.1
 aiofiles==24.1.0

@@ -10,7 +10,7 @@ import shutil
 import traceback
 import logging
 from dotenv import load_dotenv
-import boto3
+from groq import Groq
 from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 from pydantic import BaseModel
@@ -276,70 +276,46 @@ os.environ.pop('HTTPS_PROXY', None)
 os.environ.pop('http_proxy', None)
 os.environ.pop('https_proxy', None)
 
-# Initialize Bedrock client lazily
-def get_bedrock_client():
-    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-    aws_region = os.getenv("AWS_REGION", "us-east-1")
-    
-    if not (aws_access_key and aws_secret_key):
-        logger.error("AWS credentials not found in environment")
+# Initialize Groq client lazily
+def get_groq_client():
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        logger.error("GROQ_API_KEY not found in environment")
         return None
     try:
-        return boto3.client(
-            service_name='bedrock-runtime',
-            region_name=aws_region,
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key
-        )
+        return Groq(api_key=api_key)
     except Exception as e:
-        logger.error(f"Failed to initialize Bedrock client: {e}")
+        logger.error(f"Failed to initialize Groq client: {e}")
         return None
 
 @app.get("/api/status")
 async def get_status():
-    aws_key = os.getenv("AWS_ACCESS_KEY_ID")
+    api_key = os.getenv("GROQ_API_KEY")
     return {
         "status": "online",
-        "bedrock_configured": bool(aws_key),
+        "groq_configured": bool(api_key),
         "data_dir_exists": os.path.exists(DATA_DIR),
         "resumes_dir_exists": os.path.exists(RESUMES_DIR),
         "timestamp": datetime.now().isoformat()
     }
 
 def call_llm(prompt: str, max_tokens: int = 2000) -> str:
-    """Call AWS Bedrock Nova Lite LLM"""
-    client = get_bedrock_client()
+    """Call Groq LLM"""
+    client = get_groq_client()
     if not client:
-        return "Error: AI not configured. Please set AWS credentials."
+        return "Error: AI not configured. Please set GROQ_API_KEY."
     try:
-        model_id = "amazon.nova-lite-v1:0"
-        
-        body = json.dumps({
-            "inferenceConfig": {
-                "maxNewTokens": max_tokens,
-                "temperature": 0.7,
-                "topP": 0.9
-            },
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"text": prompt}
-                    ]
-                }
-            ]
-        })
-        
-        response = client.invoke_model(
-            modelId=model_id,
-            body=body
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=max_tokens
         )
-        
-        response_body = json.loads(response.get('body').read())
-        return response_body['output']['message']['content'][0]['text'].strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"Bedrock LLM Error: {e}")
+        logger.error(f"LLM Error: {e}")
         return ""
 
 def extract_json(text: str) -> dict:
