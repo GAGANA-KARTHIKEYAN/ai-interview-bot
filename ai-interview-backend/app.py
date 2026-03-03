@@ -276,14 +276,34 @@ os.environ.pop('HTTPS_PROXY', None)
 os.environ.pop('http_proxy', None)
 os.environ.pop('https_proxy', None)
 
-# Initialize Groq client
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY not found in .env file")
-client = Groq(api_key=GROQ_API_KEY)  # Make sure it's exactly this, no other arguments
+# Initialize Groq client lazily
+def get_groq_client():
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        logger.error("GROQ_API_KEY not found in environment")
+        return None
+    try:
+        return Groq(api_key=api_key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Groq client: {e}")
+        return None
+
+@app.get("/api/status")
+async def get_status():
+    api_key = os.getenv("GROQ_API_KEY")
+    return {
+        "status": "online",
+        "groq_configured": bool(api_key),
+        "data_dir_exists": os.path.exists(DATA_DIR),
+        "resumes_dir_exists": os.path.exists(RESUMES_DIR),
+        "timestamp": datetime.now().isoformat()
+    }
 
 def call_llm(prompt: str, max_tokens: int = 2000) -> str:
     """Call Groq LLM"""
+    client = get_groq_client()
+    if not client:
+        return "Error: AI not configured. Please set GROQ_API_KEY."
     try:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
