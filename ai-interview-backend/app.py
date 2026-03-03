@@ -26,6 +26,7 @@ app.add_middleware(
     allow_origins=[
         "https://ai-interview-bot-jade.vercel.app", 
         "https://ai-interview-2s6hdakhy-gagana-karthikeyans-projects.vercel.app",  # Your Vercel frontend URL
+        "https://ai-interview-5a5tcnmgn-gagana-karthikeyans-projects.vercel.app",  # The user's new redeployed Vercel URL
         "https://ai-interview-79rqkkhru-gagana-karthikeyans-projects.vercel.app/",
         "https://ai-interview-79rqkkhru-gagana-karthikeyans-projects.vercel.app",
         "http://localhost:3000"  # For local development

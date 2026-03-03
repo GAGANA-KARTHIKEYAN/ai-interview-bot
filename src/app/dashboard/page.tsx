@@ -40,25 +40,6 @@ export default function Dashboard() {
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
   const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
-
-  const API_BASE = "https://ai-interview-bot-docker.onrender.com";
-  // Helper function for making API calls
-  const apiCall = async (endpoint: string, options: RequestInit = {}) => {
-    const url = process.env.NODE_ENV === 'production'
-      ? `/api${endpoint}`  // Use relative path in production
-      : `${API_BASE}/api${endpoint}`;  // Use full URL in development
-
-    console.log(`🌐 API Call: ${url}`, options.method || 'GET');
-    return fetch(url, options);
-  };
-
-  // Debug logging
-  useEffect(() => {
-    console.log('🔧 Environment:', process.env.NODE_ENV);
-    console.log('🔧 API_BASE from env:', process.env.NEXT_PUBLIC_API_URL);
-    console.log('🔧 Final API_BASE:', API_BASE);
-    console.log('🔧 Test URL:', `${API_BASE}/api/health`);
-  }, []);
   // ========== VOICE SYNTHESIS ============
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
 
@@ -86,18 +67,6 @@ export default function Dashboard() {
   const [answerTimer, setAnswerTimer] = useState(180);
   const [timerActive, setTimerActive] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Debug logging for API configuration
-  useEffect(() => {
-    console.log('🔧 Environment:', process.env.NODE_ENV);
-    console.log('🔧 API Base:', API_BASE);
-    console.log('🔧 Production Mode:', process.env.NODE_ENV === 'production');
-    console.log('🔧 Sample API URL (health):',
-      process.env.NODE_ENV === 'production'
-        ? '/api/health'
-        : `${API_BASE}/api/health`
-    );
-  }, []);
 
   // ========== PROFILE FUNCTIONS ==========
   const refreshProfile = useCallback(() => {
@@ -420,7 +389,7 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      const response = await apiCall('/health', {
+      const response = await fetch(`${BACKEND}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(3000)
       });
@@ -545,7 +514,7 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const res = await apiCall('/upload-and-analyze', {
+      const res = await fetch(`${BACKEND}/upload-and-analyze`, {
         method: "POST",
         body: fd,
         signal: controller.signal
@@ -645,7 +614,7 @@ export default function Dashboard() {
     setDetailedFeedback(null);
 
     try {
-      const response = await apiCall('/start-interview', {
+      const response = await fetch(`${BACKEND}/start-interview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -815,7 +784,7 @@ export default function Dashboard() {
 
     try {
       // Evaluate this answer
-      const evalResponse = await apiCall('/evaluate', {
+      const evalResponse = await fetch(`${BACKEND}/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1035,7 +1004,7 @@ export default function Dashboard() {
       const skillsRemaining = skills.slice(currentIndex + 1).map(s => s.skill);
 
       // Generate next question
-      const nextResponse = await apiCall('/next-question', {
+      const nextResponse = await fetch(`${BACKEND}/next-question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1133,7 +1102,7 @@ export default function Dashboard() {
 
   const generateSkillSummary = async (skill: string) => {
     try {
-      const response = await apiCall('/generate-skill-summary', {
+      const response = await fetch(`${BACKEND}/generate-skill-summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1153,7 +1122,7 @@ export default function Dashboard() {
 
   const generateFinalReport = async () => {
     try {
-      const response = await apiCall('/final-report', {
+      const response = await fetch(`${BACKEND}/final-report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1264,7 +1233,7 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const res = await apiCall('/evaluate', {
+      const res = await fetch(`${BACKEND}/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
