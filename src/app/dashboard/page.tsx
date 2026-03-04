@@ -43,14 +43,26 @@ export default function Dashboard() {
 
   const API_BASE = "https://ai-interview-bot-docker.onrender.com";
   // Helper function for making API calls
-  const apiCall = async (endpoint: string, options: RequestInit = {}) => {
+  const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     const url = process.env.NODE_ENV === 'production'
       ? `/api${endpoint}`  // Use relative path in production
       : `${API_BASE}/api${endpoint}`;  // Use full URL in development
 
-    console.log(`🌐 API Call: ${url}`, options.method || 'GET');
-    return fetch(url, options);
-  };
+    const storedUser = localStorage.getItem('user');
+    const userEmail = storedUser ? JSON.parse(storedUser).email : null;
+
+    const mergedOptions = {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(userEmail ? { 'email': userEmail } : {}),
+        ...options.headers,
+      }
+    };
+
+    console.log(`🌐 API Call: ${url}`, mergedOptions.method || 'GET');
+    return fetch(url, mergedOptions);
+  }, [BACKEND, API_BASE]);
 
   // Debug logging
   useEffect(() => {
@@ -121,6 +133,19 @@ export default function Dashboard() {
       });
   }, [user?.email]);
 
+  const fetchInterviewHistory = useCallback(async (email: string) => {
+    try {
+      const res = await apiCall('/history');
+      if (res.ok) {
+        const data = await res.json();
+        setPreviousInterviews(data.history || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch history:', err);
+      // Fallback to local if needed, but we want to move away from it
+    }
+  }, [apiCall]);
+
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
@@ -130,17 +155,14 @@ export default function Dashboard() {
 
     const parsedUser = JSON.parse(storedUser);
     setUser(parsedUser);
-    refreshProfile();
 
-    // Load ALL previous interviews
-    const savedInterviews = localStorage.getItem(`interviews_${parsedUser.email}`);
-    if (savedInterviews) {
-      setPreviousInterviews(JSON.parse(savedInterviews));
-    }
+    // Fetch profile and history from backend
+    refreshProfile();
+    fetchInterviewHistory(parsedUser.email);
 
     checkBackendStatus();
     setLoading(false);
-  }, [router, refreshProfile]);
+  }, [router, refreshProfile, fetchInterviewHistory]);
 
   // ========== TAB SWITCH DETECTION ==========
   useEffect(() => {
@@ -206,7 +228,6 @@ export default function Dashboard() {
     if (!user?.email) return;
 
     const interviewData = {
-      id: Date.now(),
       date: new Date().toISOString(),
       type: interviewMode,
       skills: skills.map(s => s.skill),
@@ -219,8 +240,13 @@ export default function Dashboard() {
       totalTabSwitches: tabSwitchCount
     };
 
+    apiCall('/history', {
+      method: 'POST',
+      body: JSON.stringify({ interview: interviewData })
+    }).then(() => fetchInterviewHistory(user.email));
+
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
-    savedInterviews.push(interviewData);
+    savedInterviews.push({ ...interviewData, id: Date.now() });
     localStorage.setItem(`interviews_${user.email}`, JSON.stringify(savedInterviews));
     setPreviousInterviews(savedInterviews);
   };
@@ -1089,7 +1115,14 @@ export default function Dashboard() {
           // Generate summary for current skill
           await generateSkillSummary(skills[currentIndex]?.skill);
 
-          if (currentIndex + 1 < skills.length) {
+          if (nextData.should_transition?.complete || currentIndex + 1 >= skills.length) {
+            // FINISH INTERVIEW LOGIC
+            await generateFinalReport();
+            setInterviewStep('summary');
+            setIsInterviewActive(false);
+
+
+          } else {
             // Move to next skill
             const nextIndex = currentIndex + 1;
             setCurrentIndex(nextIndex);
@@ -1114,11 +1147,6 @@ export default function Dashboard() {
 
             // Speak the question
             speak(nextQuestionText);
-          } else {
-            // Interview complete
-            await generateFinalReport();
-            setInterviewStep('summary');
-            setIsInterviewActive(false);
           }
         } else {
           // Continue with next question for same skill
@@ -1216,7 +1244,6 @@ export default function Dashboard() {
     const overallScore = calculateDynamicOverallScore(questionHistory);
 
     const interviewData = {
-      id: Date.now(),
       date: new Date().toISOString(),
       type: 'dynamic',
       skills: skills.map(s => s.skill),
@@ -1230,8 +1257,13 @@ export default function Dashboard() {
       totalTabSwitches: tabSwitchCount
     };
 
+    apiCall('/history', {
+      method: 'POST',
+      body: JSON.stringify({ interview: interviewData })
+    }).then(() => fetchInterviewHistory(user.email));
+
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
-    savedInterviews.push(interviewData);
+    savedInterviews.push({ ...interviewData, id: Date.now() });
     localStorage.setItem(`interviews_${user.email}`, JSON.stringify(savedInterviews));
     setPreviousInterviews(savedInterviews);
   };
@@ -1240,7 +1272,6 @@ export default function Dashboard() {
     if (!user?.email) return;
 
     const interviewData = {
-      id: Date.now(),
       date: new Date().toISOString(),
       type: interviewMode,
       skills: skills.map(s => s.skill),
@@ -1253,8 +1284,13 @@ export default function Dashboard() {
       totalTabSwitches: tabSwitchCount
     };
 
+    apiCall('/history', {
+      method: 'POST',
+      body: JSON.stringify({ interview: interviewData })
+    }).then(() => fetchInterviewHistory(user.email));
+
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
-    savedInterviews.push(interviewData);
+    savedInterviews.push({ ...interviewData, id: Date.now() });
     localStorage.setItem(`interviews_${user.email}`, JSON.stringify(savedInterviews));
     setPreviousInterviews(savedInterviews);
   };
@@ -1424,7 +1460,6 @@ export default function Dashboard() {
     stopCamera();
 
     const interviewData = {
-      id: Date.now(),
       date: new Date().toISOString(),
       type: 'standard',
       skills: skills.map(s => s.skill),
@@ -1435,8 +1470,13 @@ export default function Dashboard() {
       totalTabSwitches: results.reduce((sum, r) => sum + (r.tabSwitches || 0), 0)
     };
 
+    apiCall('/history', {
+      method: 'POST',
+      body: JSON.stringify({ interview: interviewData })
+    }).then(() => fetchInterviewHistory(user.email));
+
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
-    savedInterviews.push(interviewData);
+    savedInterviews.push({ ...interviewData, id: Date.now() });
     localStorage.setItem(`interviews_${user.email}`, JSON.stringify(savedInterviews));
     setPreviousInterviews(savedInterviews);
 

@@ -14,6 +14,7 @@ from groq import Groq
 from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 from pydantic import BaseModel
+from supabase import create_client, Client
 
 # Load environment variables
 load_dotenv()
@@ -69,6 +70,20 @@ def get_users():
 
 def save_users(users):
     with open(USERS_FILE, 'w') as f: json.dump(users, f, indent=2)
+
+# ========== SUPABASE CONFIGURATION ==========
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = None
+
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info("Supabase client initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize Supabase: {e}")
+else:
+    logger.warning("Supabase URL/Key missing. Falling back to local storage (Vercel volatile).")
 
 def get_groq_client():
     api_key = os.getenv("GROQ_API_KEY")
@@ -140,30 +155,62 @@ async def get_status():
 @app.post("/api/auth")
 async def auth(payload: dict):
     auth_type, email, password, name = payload.get("type"), payload.get("email"), payload.get("password"), payload.get("name")
-    users = cast(List[Dict[str, Any]], get_users())
     
+    # Supabase Auth logic
+    if supabase:
+        try:
+            if auth_type == "signup":
+                # Check if exists
+                res = supabase.table("users").select("*").eq("email", email).execute()
+                if res.data: return {"success": False, "error": "User exists"}
+                # Insert
+                new_user = {
+                    "email": email, "password": password, 
+                    "name": name or email.split("@")[0],
+                    "created_at": datetime.now().isoformat()
+                }
+                supabase.table("users").insert(new_user).execute()
+                return {"success": True}
+            elif auth_type == "login":
+                res = supabase.table("users").select("*").eq("email", email).eq("password", password).execute()
+                if not res.data: return {"success": False, "error": "Invalid credentials"}
+                user = res.data[0]
+                return {"success": True, "user": {"id": user.get("id"), "email": user["email"], "name": user.get("name")}}
+        except Exception as e:
+            logger.error(f"Supabase auth failed: {e}")
+    
+    # Local fallback
+    users = cast(List[Dict[str, Any]], get_users())
     if auth_type == "signup":
         if not email: return {"success": False, "error": "Email required"}
         if any(u["email"] == email for u in users): return {"success": False, "error": "User exists"}
         new_user = {
             "id": int(datetime.now().timestamp() * 1000),
-            "email": email, "password": password, "name": name or email.split("@")[0],
+            "email": email, "password": password, "name": name or (email.split("@")[0] if email and "@" in email else "User"),
             "createdAt": datetime.now().isoformat()
         }
-        users.append(new_user)
-        save_users(users)
+        users.append(new_user); save_users(users)
         return {"success": True}
-    
     elif auth_type == "login":
         user = next((u for u in users if u["email"] == email and u["password"] == password), None)
         if not user: return {"success": False, "error": "Invalid credentials"}
         return {"success": True, "user": {"id": user["id"], "email": user["email"], "name": user.get("name")}}
-    
     return {"success": False, "error": "Invalid type"}
 
 @app.get("/api/profile")
 async def get_profile(email: str = Header(None)):
     if not email: return {"email": None, "resume": None, "parsedResume": None}
+    
+    # Supabase logic
+    if supabase:
+        try:
+            res = supabase.table("profiles").select("*").eq("email", email).execute()
+            if res.data:
+                return res.data[0]
+        except Exception as e:
+            logger.error(f"Supabase get_profile failed: {e}")
+            
+    # Local fallback
     profiles = get_profiles()
     profile = next((p for p in profiles if p["email"] == email), None)
     return profile or {"email": email, "resume": None, "parsedResume": None}
@@ -172,11 +219,32 @@ async def get_profile(email: str = Header(None)):
 async def update_profile(payload: dict):
     email = payload.get("email")
     if not email: raise HTTPException(status_code=400, detail="Email required")
-    profiles = cast(List[Dict[str, Any]], get_profiles())
-    user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
     
     profile_data = payload.copy()
     profile_data["updatedAt"] = datetime.now().isoformat()
+
+    # Supabase logic
+    if supabase:
+        try:
+            # Upsert
+            # Check if exists to merge or just upsert
+            res = supabase.table("profiles").select("*").eq("email", email).execute()
+            if res.data:
+                # Merge existing and update
+                existing = res.data[0]
+                for key in existing:
+                    if key not in profile_data or profile_data[key] is None:
+                        profile_data[key] = existing[key]
+                supabase.table("profiles").update(profile_data).eq("email", email).execute()
+            else:
+                supabase.table("profiles").insert(profile_data).execute()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Supabase update_profile failed: {e}")
+
+    # Local logic
+    profiles = cast(List[Dict[str, Any]], get_profiles())
+    user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
     
     if user_idx > -1:
         existing = profiles[user_idx]
@@ -201,18 +269,37 @@ async def upload_resume(resume: UploadFile = File(...), email: str = Header(None
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(resume.file, buffer)
     
+    resume_url = f"/api/uploads/{file_name}" # Local access URL
+    
+    # Supabase logic
+    if supabase:
+        try:
+            profile_data = {
+                "email": email,
+                "resume": resume_url,
+                "parsed_resume": None,
+                "updated_at": datetime.now().isoformat()
+            }
+            res = supabase.table("profiles").select("*").eq("email", email).execute()
+            if res.data:
+                supabase.table("profiles").update(profile_data).eq("email", email).execute()
+            else:
+                supabase.table("profiles").insert(profile_data).execute()
+        except Exception as e:
+            logger.error(f"Supabase upload sync failed: {e}")
+
+    # Local fallback
     profiles = get_profiles()
     profile_data = {
-        "email": email, "resume": f"/api/uploads/{file_name}",
+        "email": email, "resume": resume_url,
         "parsedResume": None, "updatedAt": datetime.now().isoformat()
     }
-    
     user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
     if user_idx > -1: profiles[user_idx] = profile_data
     else: profiles.append(profile_data)
     save_profiles(profiles)
     
-    return {"success": True, "resumeUrl": profile_data["resume"]}
+    return {"success": True, "resumeUrl": resume_url}
 
 @app.get("/api/uploads/{filename}")
 async def serve_file(filename: str):
@@ -227,12 +314,21 @@ async def delete_resume(email: str = Header(None)):
     file_path = os.path.join(RESUMES_DIR, f"{safe_email}.pdf")
     if os.path.exists(file_path): os.remove(file_path)
     
+    # Supabase logic
+    if supabase:
+        try:
+            supabase.table("profiles").update({"resume": None, "parsed_resume": None}).eq("email", email).execute()
+        except Exception as e:
+            logger.error(f"Supabase delete sync failed: {e}")
+
+    # Local logic
     profiles = get_profiles()
     user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
     if user_idx > -1:
         profiles[user_idx]["resume"] = None
         profiles[user_idx]["parsedResume"] = None
         save_profiles(profiles)
+        
     return {"success": True}
 
 
@@ -453,9 +549,15 @@ async def next_question(payload: dict):
         reason = "Limited depth, moving to other areas"
 
     if should_transition:
+        is_complete = not bool(skills_rem)
         return {
             "success": True,
-            "should_transition": {"transition": True, "reason": reason, "next_skill": skills_rem[0] if skills_rem else None, "complete": not bool(skills_rem)},
+            "should_transition": {
+                "transition": True, 
+                "reason": reason, 
+                "next_skill": skills_rem[0] if skills_rem else None, 
+                "complete": is_complete
+            },
             "analysis": analysis
         }
 
@@ -526,7 +628,8 @@ async def evaluate(payload: dict):
     3. VOICE Input: Score Technical + Communication + Confidence. (Behavioral MUST be 0).
     4. VIDEO Input: Score all 4. 
        - IMPORTANT: If 'BEHAVIORAL VIDEO ANALYSIS' states the face is missing, covered, blank, or looking away, you MUST severely penalize the Behavioral score (give 0-3) and note it in feedback.
-    5. COMMUNICATION: Be extremely strict on filler words (um, ah, like) and hesitation. If pacing is rushed or unstructured, lower the communication and confidence scores. 
+    5. COMMUNICATION: Be extremely strict on filler words (um, ah, like, basically, you know, actually) and hesitation markers. Scan the transcript specifically for these tokens. If pacing is rushed, fragmented, or unstructured, lower both the communication and confidence scores. 
+    6. HESITATION: If the candidate repeats words or makes long pauses (represented as '...' or similar in transcript), flag 'hesitation_markers' as true.
     
     Return ONLY JSON with this EXACT nested structure:
     {{
@@ -612,3 +715,34 @@ async def final_report(payload: dict):
     prompt = f"Generate final hiring report for skills: {json.dumps(skills)}. Summaries: {json.dumps(summaries)}. Return JSON: {{ 'overall_score': 0-100, 'overall_proficiency': '...', 'hiring_recommendation': '...', 'summary': '...' }}"
     report = extract_json(call_llm(prompt, max_tokens=3000)) or {"overall_score": 70, "summary": "Interview complete."}
     return report
+
+@app.get("/api/history")
+async def get_history(email: str = Header(None)):
+    if not email: return {"history": []}
+    if supabase:
+        try:
+            res = supabase.table("interviews").select("*").eq("email", email).order("created_at", descending=True).execute()
+            return {"history": res.data if res.data else []}
+        except Exception as e:
+            logger.error(f"Supabase get_history failed: {e}")
+    # Local fallback
+    return {"history": []}
+
+@app.post("/api/history")
+async def save_history(payload: dict, email: str = Header(None)):
+    if not email: return {"success": False, "error": "Email required"}
+    interview_data = payload.get("interview", {})
+    if not interview_data: return {"success": False, "error": "No data"}
+    
+    interview_data["email"] = email
+    interview_data["created_at"] = datetime.now().isoformat()
+    
+    if supabase:
+        try:
+            supabase.table("interviews").insert(interview_data).execute()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Supabase save_history failed: {e}")
+            
+    return {"success": False, "error": "Failed to save history"}
+
