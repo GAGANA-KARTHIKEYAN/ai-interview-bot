@@ -300,20 +300,30 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
         ai_response = call_llm(prompt, max_tokens=2500)
         matched_skills = extract_json(ai_response)
         
-        if not matched_skills or not isinstance(matched_skills, list):
+        if not isinstance(matched_skills, list):
             logger.warning("No skills extracted or invalid JSON, using fallbacks")
             matched_skills = get_fallback_skills()
         
-        # Ensure schema consistency
+        # Ensure schema consistency and deduplicate
+        unique_skills = []
+        seen = set()
         for skill in matched_skills:
             if not isinstance(skill, dict): continue
-            if "skill" not in skill: skill["skill"] = "Unknown"
+            
+            skill_name = str(skill.get("skill", "Unknown"))
+            key = skill_name.lower().strip()
+            if key in seen: continue
+            seen.add(key)
+            
+            skill["skill"] = skill_name
             if "typical_questions" not in skill or not skill["typical_questions"]:
-                skill["typical_questions"] = generate_fallback_questions(str(skill["skill"]), str(skill.get("experience_level", "intermediate")))
-            if "category" not in skill: skill["category"] = categorize_skill(str(skill["skill"]))
+                skill["typical_questions"] = generate_fallback_questions(skill_name, str(skill.get("experience_level", "intermediate")))
+            if "category" not in skill: skill["category"] = categorize_skill(skill_name)
             if "experience_level" not in skill: skill["experience_level"] = "intermediate"
             
-        return {"matched_skills": matched_skills}
+            unique_skills.append(skill)
+            
+        return {"matched_skills": unique_skills}
     except Exception as e:
         logger.error(f"CV Analysis Error: {traceback.format_exc()}")
         return {"matched_skills": get_fallback_skills()}

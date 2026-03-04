@@ -850,8 +850,16 @@ export default function Dashboard() {
         })
       });
 
+      if (!evalResponse.ok) {
+        throw new Error(`Evaluation HTTP error: ${evalResponse.status}`);
+      }
+
       const evalData = await evalResponse.json();
       const evaluation = evalData.evaluation || evalData;
+
+      if (!evaluation || !evaluation.capability) {
+        throw new Error("Evaluation response missing capability field");
+      }
 
       // Store detailed feedback
       setDetailedFeedback(evaluation);
@@ -1304,8 +1312,16 @@ export default function Dashboard() {
 
       clearTimeout(timeoutId);
 
+      if (!res.ok) {
+        throw new Error(`Evaluation HTTP error: ${res.status}`);
+      }
+
       const data = await res.json();
       const e = data.evaluation || data;
+
+      if (!e || !e.capability) {
+        throw new Error("Evaluation response missing capability field");
+      }
 
       // Store detailed feedback
       setDetailedFeedback(e);
