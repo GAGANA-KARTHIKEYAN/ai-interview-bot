@@ -54,7 +54,7 @@ export default function Dashboard() {
     const mergedOptions = {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
+        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...(userEmail ? { 'email': userEmail } : {}),
         ...options.headers,
       }
@@ -512,7 +512,10 @@ export default function Dashboard() {
         refreshProfile();
         router.refresh();
       } else {
-        alert('Upload failed: ' + (data.error || data.detail || 'Unknown error'));
+        const errorMessage = typeof data.error === 'string' ? data.error :
+          typeof data.detail === 'string' ? data.detail :
+            JSON.stringify(data.error || data.detail || 'Unknown error');
+        alert('Upload failed: ' + errorMessage);
       }
     } catch (err) {
       console.error(err);
