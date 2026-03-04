@@ -266,139 +266,293 @@ async def parse_resume(payload: dict):
         logger.error(f"Parse error: {e}")
         return {"success": False}
 
+# --- Interview Endpoints ---
+
 @app.post("/api/upload-and-analyze")
 async def upload_and_analyze(cv: UploadFile = File(...)):
+    """Analyze CV using AI to extract skills with experience levels"""
     try:
-        logger.info(f"Uploading and analyzing CV: {cv.filename}")
+        # Extract text from PDF
+        text_chunks: list[str] = []
         with pdfplumber.open(cv.file) as pdf:
-            text = "\n".join([p.extract_text() or "" for p in pdf.pages])
-        if len(text) > 4000: text = text[:4000]
-        logger.info(f"Extracted {len(text)} chars of text from CV")
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text_chunks.append(str(page_text))
+        
+        text: str = "\n".join(text_chunks)
+        
+        # Truncate if too long
+        if len(text) > 4000:
+            text = text[0:4000]
+        logger.info(f"Extracted {len(text)} characters from CV for analysis")
         
         prompt = f"""
-        You are an expert technical recruiter analyzing a candidate's CV.
+        You are an expert technical recruiter analyzing a candidate's CV for a software developer position.
+        
         CV CONTENT:
         {text}
         
-        Extract ALL technical skills (Languages, Frameworks, Tools, Databases).
-        For each skill, estimate experience level (beginner/intermediate/advanced/expert) and category.
-        Also provide 2 typical interview questions for that skill.
+        Based on this CV content, extract ALL technical skills mentioned (Languages, Frameworks, Tools, Databases, Cloud).
         
-        Return ONLY a valid JSON array:
+        For each skill:
+        1. Identify it from the CV
+        2. Estimate experience level (beginner/intermediate/advanced/expert)
+        3. Categorize it appropriately
+        4. Add 2-3 typical interview questions for this skill
+        
+        Return ONLY a valid JSON array with this exact structure:
         [
             {{
                 "skill": "Python",
                 "experience_level": "intermediate",
                 "category": "language",
-                "typical_questions": ["Explain decorators", "How is memory managed?"]
+                "typical_questions": [
+                    "Explain Python decorators and when you'd use them",
+                    "How does Python handle memory management?"
+                ]
             }}
         ]
+        
+        Include 8-15 skills. Defaults to "intermediate" if unsure.
         """
+        
         ai_response = call_llm(prompt, max_tokens=2500)
         matched_skills = extract_json(ai_response)
         
         if not matched_skills or not isinstance(matched_skills, list):
-            logger.warning("No skills extracted or bad format. Using fallbacks.")
+            logger.warning("No skills extracted or invalid JSON, using fallbacks")
             matched_skills = get_fallback_skills()
         
+        # Ensure schema consistency
+        for skill in matched_skills:
+            if not isinstance(skill, dict): continue
+            if "skill" not in skill: skill["skill"] = "Unknown"
+            if "typical_questions" not in skill or not skill["typical_questions"]:
+                skill["typical_questions"] = generate_fallback_questions(str(skill["skill"]), str(skill.get("experience_level", "intermediate")))
+            if "category" not in skill: skill["category"] = categorize_skill(str(skill["skill"]))
+            if "experience_level" not in skill: skill["experience_level"] = "intermediate"
+            
         return {"matched_skills": matched_skills}
     except Exception as e:
-        logger.error(f"CV Analysis Error: {e}")
+        logger.error(f"CV Analysis Error: {traceback.format_exc()}")
         return {"matched_skills": get_fallback_skills()}
 
 def get_fallback_skills():
     return [
-        {"skill": "Python", "experience_level": "intermediate", "category": "language", "typical_questions": ["What are list comprehensions?", "Difference between list and tuple?"]},
-        {"skill": "JavaScript", "experience_level": "intermediate", "category": "language", "typical_questions": ["What is a closure?", "How does 'this' work?"]},
-        {"skill": "React", "experience_level": "intermediate", "category": "framework", "typical_questions": ["What are hooks?", "Virtual DOM explanation?"]},
-        {"skill": "Node.js", "experience_level": "intermediate", "category": "framework", "typical_questions": ["Event loop explanation?", "How to handle async errors?"]}
+        {"skill": "Python", "experience_level": "intermediate", "category": "language", "typical_questions": ["What are list comprehensions?", "Explain decorators."]},
+        {"skill": "JavaScript", "experience_level": "intermediate", "category": "language", "typical_questions": ["Explain closures.", "How does the event loop work?"]},
+        {"skill": "React", "experience_level": "intermediate", "category": "framework", "typical_questions": ["Difference between functional and class components?", "What are hooks?"]},
+        {"skill": "SQL", "experience_level": "intermediate", "category": "database", "typical_questions": ["Explain JOIN types.", "What is normalization?"]}
     ]
+
+def generate_fallback_questions(skill: str, level: str) -> list:
+    base = {
+        "beginner": [f"What is {skill}?", f"Basic concepts of {skill}?"],
+        "intermediate": [f"Core features of {skill}?", f"Problem solved with {skill}?"],
+        "advanced": [f"Optimizations in {skill}?", f"Common pitfalls in {skill}?"],
+        "expert": [f"System design with {skill}?", f"Architecture patterns in {skill}?"]
+    }
+    return base.get(level.lower(), base["intermediate"])
+
+def categorize_skill(skill: str) -> str:
+    s = skill.lower()
+    if any(x in s for x in ['python', 'js', 'java', 'go', 'ruby']): return "language"
+    if any(x in s for x in ['react', 'django', 'spring', 'node']): return "framework"
+    if any(x in s for x in ['sql', 'postgres', 'mongo']): return "database"
+    if any(x in s for x in ['git', 'docker', 'aws']): return "tool"
+    return "other"
 
 @app.post("/api/start-interview")
 async def start_interview(payload: dict):
+    """Initialize interview with first question"""
     skills = payload.get("skills", [])
-    if not skills: return {"success": False, "error": "No skills"}
+    if not skills: return {"success": False, "error": "No skills provided"}
     
     first = skills[0]
-    skill_name = first.get("skill")
+    skill_name = first["skill"]
     level = first.get("experience_level", "intermediate")
     
-    # Generate a dynamic opening question
-    prompt = f"Start a technical interview for skill '{skill_name}' at level '{level}'. Generate a professional opening question. Return JSON: {{'question': '...', 'skill': '{skill_name}'}}"
-    ai_response = call_llm(prompt)
-    resp = extract_json(ai_response) or {}
+    # Generate dynamic opening question
+    prompt = f"""
+    Starting interview for a {level} level candidate in {skill_name}.
+    Generate a warm, professional, and conversational OPENING question.
+    Encourage them to share a specific project.
     
-    question_text = resp.get("question", f"Tell me about your experience with {skill_name}.")
-    question_data = {"question": question_text, "skill": skill_name, "question_type": "opening"}
+    Return ONLY JSON:
+    {{
+        "question": "Question text",
+        "context": "Brief context",
+        "skill": "{skill_name}"
+    }}
+    """
+    try:
+        ai_response = call_llm(prompt)
+        res = extract_json(ai_response)
+        question_text = res.get("question", f"Tell me about your experience with {skill_name}.")
+        context = res.get("context", "Opening")
+    except:
+        question_text = f"Let's start with {skill_name}. Walk me through a project where you used it effectively."
+        context = "Opening"
+        
+    question_data = {
+        "question": question_text,
+        "context": context,
+        "expected_depth": level,
+        "skill": skill_name,
+        "question_type": "opening",
+        "follow_up_potential": True
+    }
     
     interview_state = {
-        "current_skill_index": 0, "skills": skills,
+        "current_skill_index": 0,
+        "skills": skills,
         "questions_asked": {skill_name: [question_data]},
         "answers_received": {skill_name: []},
-        "conv_history": [{"role": "assistant", "content": question_text}]
+        "evaluations": {skill_name: []},
+        "skill_progress": {skill_name: {"questions_asked": 1, "status": "in_progress"}}
     }
+    
     return {"success": True, "question": question_data, "interview_state": interview_state}
 
 @app.post("/api/next-question")
 async def next_question(payload: dict):
-    skill, answer, history, skills_remaining = payload.get("skill"), payload.get("answer"), payload.get("history", []), payload.get("skills_remaining", [])
+    """Dynamically generate next question or transition"""
+    skill = payload.get("skill", "")
+    prev_answer = payload.get("answer", "")
+    prev_question = payload.get("question", "")
+    history = payload.get("history", [])
+    skills_rem = payload.get("skillsRemaining", [])
+
+    if not skill or not prev_answer: return {"success": False, "error": "Missing fields"}
+
+    # 1. Analyze Answer
+    analysis_prompt = f"""
+    Analyze this technical answer for {skill}.
+    Question: {prev_question}
+    Answer: {prev_answer}
     
-    # Analyze answer and decide next step
-    prompt = f"""
-    Interviewer evaluating '{skill}'.
-    Previous question history: {json.dumps(history[-3:])}
-    Latest answer: '{answer}'
-    
-    Analyze the answer. Should we ask a follow-up or move to next skill?
-    If follow-up, provide a challenging question.
-    If move on, set should_transition to true.
-    
-    Return JSON: {{ "should_transition": bool, "next_question": "string", "feedback": "string" }}
+    Analyze deeply and return JSON:
+    {{
+        "demonstrated_concepts": ["c1", "c2"],
+        "missing_concepts": ["c1", "c2"],
+        "answer_depth": "superficial/moderate/deep/expert",
+        "had_examples": true/false,
+        "true_proficiency": "beginner/intermediate/advanced/expert",
+        "next_focus": "probe area"
+    }}
     """
-    ai_response = call_llm(prompt)
-    resp = extract_json(ai_response) or {}
-    
-    should_transition = resp.get("should_transition", False)
-    if (should_transition or len(history) > 6) and skills_remaining:
-        next_skill = skills_remaining[0]
-        transition_q = f"Great. Let's move on to {next_skill['skill']}. How would you describe your proficiency here?"
-        return {
-            "success": True, 
-            "should_transition": {"transition": True, "next_skill": next_skill},
-            "next_question": {"question": transition_q, "skill": next_skill['skill']},
-            "analysis": resp
-        }
-    
-    return {
-        "success": True,
-        "should_transition": {"transition": False},
-        "next_question": {"question": resp.get("next_question", "Interesting. Can you elaborate further?"), "skill": skill},
-        "analysis": resp
+    analysis = extract_json(call_llm(analysis_prompt)) or {
+        "demonstrated_concepts": [], "missing_concepts": [], "answer_depth": "moderate",
+        "had_examples": False, "true_proficiency": "intermediate", "next_focus": "general"
     }
+
+    # 2. Decision Logic
+    q_asked = len([h for h in history if h.get("skill") == skill])
+    should_transition = False
+    reason = "Proceeding"
+
+    if q_asked >= 3 and analysis.get("answer_depth") in ["deep", "expert"]:
+        should_transition = True
+        reason = "Strong depth shown"
+    elif q_asked >= 4:
+        should_transition = True
+        reason = "Maximum questions for this skill"
+    elif analysis.get("answer_depth") == "superficial" and q_asked >= 3:
+        should_transition = True
+        reason = "Limited depth, moving to other areas"
+
+    if should_transition:
+        return {
+            "success": True,
+            "should_transition": {"transition": True, "reason": reason, "next_skill": skills_rem[0] if skills_rem else None, "complete": not bool(skills_rem)},
+            "analysis": analysis
+        }
+
+    # 3. Generate Follow-up
+    q_prompt = f"""
+    Technical interviewer follow-up for {skill}.
+    Prev Q: {prev_question}
+    Prev A: {prev_answer}
+    Analysis: Demonstrated {analysis.get('demonstrated_concepts')}, Missing {analysis.get('missing_concepts')}, Focus on {analysis.get('next_focus')}.
+    
+    Generate ONE conversational follow-up question.
+    Return JSON: {{ "question": "...", "context": "...", "focus_area": "...", "skill": "{skill}" }}
+    """
+    nxt_q = extract_json(call_llm(q_prompt))
+    if not nxt_q or "question" not in nxt_q:
+        nxt_q = {"question": f"Can you elaborate more on how {skill} handles scalability?", "context": "Fallback", "skill": skill}
+
+    return {"success": True, "next_question": nxt_q, "analysis": analysis, "should_transition": {"transition": False}}
 
 @app.post("/api/evaluate")
 async def evaluate(payload: dict):
-    question, answer, skill = payload.get("question"), payload.get("answer"), payload.get("skill")
+    """Detailed 4-metric evaluation"""
+    question, answer, skill = payload.get("question", ""), payload.get("answer", ""), payload.get("skill", "")
+    input_type = "TEXT"
+    if "[VIDEO RECORDING" in answer: input_type = "VIDEO"
+    elif "Voice input" in answer: input_type = "VOICE"
+
     prompt = f"""
-    Evaluate this interview answer:
-    Skill: {skill}
-    Question: {question}
-    Answer: {answer}
+    Evaluate candidate's technical answer.
+    SKILL: {skill} | INPUT: {input_type} | Q: {question} | A: {answer}
     
-    Provide detailed feedback and a score (0-10).
-    Return JSON: {{ "capability": "weak/medium/strong/expert", "scores": {{ "overall_score": 7 }}, "summary_feedback": "...", "strengths": [], "areas_for_improvement": [] }}
+    SCORING RULES:
+    - TEXT: Score Technical + Confidence. (Communication/Behavioral = N/A).
+    - VOICE: Score Technical + Communication + Confidence. (Behavioral = N/A).
+    - VIDEO: Score all 4 (Technical, Confidence, Communication, Behavioral).
+    
+    Return ONLY JSON with this EXACT nested structure:
+    {{
+      "evaluation": {{
+        "capability": "weak/medium/strong/expert",
+        "confidence": "low/medium/high",
+        "technical_accuracy": {{ "correct_concepts": [], "missed_concepts": [], "misunderstood_concepts": [] }},
+        "gaps_identified": {{ "knowledge_gaps": [], "depth_gaps": [], "example_gaps": "string" }},
+        "experience_indicators": {{ "had_real_examples": bool, "discussed_challenges": bool, "example_quality": "string", "star_method_used": bool }},
+        "communication": {{ "clarity": "string", "structure": "string", "hesitation_markers": bool, "pacing": "string", "filler_words": bool }},
+        "strengths": [], "areas_for_improvement": [], "ideal_answer": "string",
+        "scores": {{ "technical_score": 0-10, "confidence_score": 0-10, "communication_score": 0-10, "behavioral_score": 0-10, "overall_score": 0-10 }},
+        "score_explanations": {{ "technical_explanation": "...", "confidence_explanation": "...", "communication_explanation": "...", "behavioral_explanation": "..." }},
+        "summary_feedback": "..."
+      }}
+    }}
     """
-    ai_response = call_llm(prompt)
-    eval_data = extract_json(ai_response)
-    
-    if not eval_data:
-        eval_data = {"capability": "medium", "scores": {"overall_score": 6}, "summary_feedback": "The answer was adequate but could use more technical depth."}
-        
-    return {"evaluation": eval_data}
+    try:
+        ai_resp = call_llm(prompt, max_tokens=4000)
+        res = extract_json(ai_resp)
+        evaluation = res.get("evaluation", res) if res else generate_fallback_evaluation(answer)
+        return {"evaluation": evaluation}
+    except:
+        return {"evaluation": generate_fallback_evaluation(answer)}
+
+def generate_fallback_evaluation(answer: str) -> dict:
+    wc = len(answer.split())
+    cap = "strong" if wc > 100 else "medium" if wc > 50 else "weak"
+    score = 8 if wc > 100 else 6 if wc > 50 else 4
+    return {
+        "capability": cap, "confidence": "medium",
+        "technical_accuracy": {"correct_concepts": ["General overview"], "missed_concepts": ["Specific depth"], "misunderstood_concepts": []},
+        "gaps_identified": {"knowledge_gaps": ["Technical detail"], "depth_gaps": ["Surface explanation"], "example_gaps": "No examples"},
+        "experience_indicators": {"had_real_examples": wc > 75, "discussed_challenges": False, "example_quality": "fair", "star_method_used": False},
+        "communication": {"clarity": "medium", "structure": "basic", "hesitation_markers": False, "pacing": "balanced", "filler_words": False},
+        "strengths": ["Clear attempt"], "areas_for_improvement": ["Add examples", "Increase depth"],
+        "ideal_answer": "A robust answer would include specific technical details and real-world examples.",
+        "scores": {"technical_score": score, "confidence_score": 6, "communication_score": 6, "behavioral_score": 5, "overall_score": score},
+        "score_explanations": {"technical_explanation": f"Shows {cap} knowledge", "confidence_explanation": "Medium confidence", "communication_explanation": "Clear", "behavioral_explanation": "N/A"},
+        "summary_feedback": f"Your answer demonstrates {cap} understanding. Add more specific details."
+    }
+
+@app.post("/api/generate-skill-summary")
+async def generate_skill_summary(payload: dict):
+    skill, history, items = payload.get("skill"), payload.get("history", []), payload.get("evaluations", [])
+    prompt = f"Summarize candidate proficiency in {skill} based on history: {json.dumps(history[:3])}. Return JSON: {{ 'skill': '{skill}', 'proficiency_level': '...', 'strengths': [], 'weaknesses': [], 'recommendations': [], 'summary': '...' }}"
+    summary = extract_json(call_llm(prompt)) or {"skill": skill, "proficiency_level": "intermediate", "summary": "Assessment complete."}
+    return summary
 
 @app.post("/api/final-report")
-async def generate_final_report(payload: dict):
-    skills, histories = payload.get("skills", []), payload.get("histories", [])
-    prompt = f"Create a final summary for an interview assessing: {json.dumps(skills)}. Summarize performance and give a hiring recommendation. Return JSON with 'overall_score', 'overall_proficiency', 'summary'."
-    ai_response = call_llm(prompt, max_tokens=3000)
-    return extract_json(ai_response) or {"overall_score": 70, "summary": "Interview complete. Good performance overall."}
+async def final_report(payload: dict):
+    skills, summaries = payload.get("skills", []), payload.get("skillSummaries", [])
+    prompt = f"Generate final hiring report for skills: {json.dumps(skills)}. Summaries: {json.dumps(summaries)}. Return JSON: {{ 'overall_score': 0-100, 'overall_proficiency': '...', 'hiring_recommendation': '...', 'summary': '...' }}"
+    report = extract_json(call_llm(prompt, max_tokens=3000)) or {"overall_score": 70, "summary": "Interview complete."}
+    return report
