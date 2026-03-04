@@ -471,13 +471,14 @@ async def next_question(payload: dict):
 
     # 3. Generate Follow-up
     q_prompt = f"""
-    Technical interviewer follow-up for {skill}.
-    Prev Q: {prev_question}
-    Prev A: {prev_answer}
-    Analysis: Demonstrated {analysis.get('demonstrated_concepts')}, Missing {analysis.get('missing_concepts')}, Focus on {analysis.get('next_focus')}.
+    You are a technical interviewer evaluating a candidate for {skill}.
+    Their previous answer to your last question was: "{prev_answer}"
     
-    Generate ONE conversational follow-up question.
-    Return JSON: {{ "question": "...", "context": "...", "focus_area": "...", "skill": "{skill}" }}
+    1. Acknowledge their point briefly or transition naturally.
+    2. Ask ONE conversational follow-up question that directly references or builds upon their last answer. 
+    Make it robust, challenging, and highly context-aware. If they missed concepts ({analysis.get('missing_concepts')}), probe into them directly.
+    
+    Return ONLY JSON: {{ "question": "...", "context": "...", "focus_area": "...", "skill": "{skill}" }}
     """
     nxt_q = extract_json(call_llm(q_prompt))
     if not nxt_q or "question" not in nxt_q:
@@ -497,10 +498,11 @@ async def evaluate(payload: dict):
     Evaluate candidate's technical answer.
     SKILL: {skill} | INPUT: {input_type} | Q: {question} | A: {answer}
     
-    SCORING RULES:
-    - TEXT: Score Technical + Confidence. (Communication/Behavioral = N/A).
-    - VOICE: Score Technical + Communication + Confidence. (Behavioral = N/A).
-    - VIDEO: Score all 4 (Technical, Confidence, Communication, Behavioral).
+    STRICT SCORING RULES:
+    1. Base Evaluation: If the answer is "I don't know", "idk", extremely brief (e.g., < 10 words without substance), or completely irrelevant, give a technical score of 0 or 1, and be harsh in the feedback.
+    2. TEXT Input: Score ONLY Technical + Confidence. (Communication and Behavioral MUST be 0).
+    3. VOICE Input: Score Technical + Communication + Confidence. (Behavioral MUST be 0).
+    4. VIDEO Input: Score all 4 (Technical, Confidence, Communication, Behavioral).
     
     Return ONLY JSON with this EXACT nested structure:
     {{
@@ -522,12 +524,42 @@ async def evaluate(payload: dict):
         ai_resp = call_llm(prompt, max_tokens=4000)
         res = extract_json(ai_resp)
         evaluation = res.get("evaluation", res) if res else generate_fallback_evaluation(answer)
+        
+        # Enforce UI rules by removing invalid scores based on input type
+        if "scores" in evaluation:
+            if input_type == "TEXT":
+                evaluation["scores"].pop("communication_score", None)
+                evaluation["scores"].pop("behavioral_score", None)
+            elif input_type == "VOICE":
+                evaluation["scores"].pop("behavioral_score", None)
+                
         return {"evaluation": evaluation}
     except:
-        return {"evaluation": generate_fallback_evaluation(answer)}
+        eval_fallback = generate_fallback_evaluation(answer)
+        if "scores" in eval_fallback:
+            if input_type == "TEXT":
+                eval_fallback["scores"].pop("communication_score", None)
+                eval_fallback["scores"].pop("behavioral_score", None)
+            elif input_type == "VOICE":
+                eval_fallback["scores"].pop("behavioral_score", None)
+        return {"evaluation": eval_fallback}
 
 def generate_fallback_evaluation(answer: str) -> dict:
     wc = len(answer.split())
+    if wc < 5 or answer.lower().strip() in ["i don't know", "idk", "no idea"]:
+        return {
+            "capability": "weak", "confidence": "low",
+            "technical_accuracy": {"correct_concepts": [], "missed_concepts": ["All required concepts"], "misunderstood_concepts": []},
+            "gaps_identified": {"knowledge_gaps": ["Did not answer"], "depth_gaps": ["No depth provided"], "example_gaps": "No examples given"},
+            "experience_indicators": {"had_real_examples": False, "discussed_challenges": False, "example_quality": "none", "star_method_used": False},
+            "communication": {"clarity": "low", "structure": "none", "hesitation_markers": True, "pacing": "fast", "filler_words": False},
+            "strengths": [], "areas_for_improvement": ["Must provide technical answer even if unsure"],
+            "ideal_answer": "Please provide your technical understanding of the topic, even if limited.",
+            "scores": {"technical_score": 0, "confidence_score": 2, "communication_score": 0, "behavioral_score": 0, "overall_score": 0},
+            "score_explanations": {"technical_explanation": "No technical substance provided."},
+            "summary_feedback": "You didn't answer the question. Please try to elaborate on what you do know next time."
+        }
+        
     cap = "strong" if wc > 100 else "medium" if wc > 50 else "weak"
     score = 8 if wc > 100 else 6 if wc > 50 else 4
     return {

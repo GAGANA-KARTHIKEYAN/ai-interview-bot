@@ -441,7 +441,11 @@ export default function Dashboard() {
     formData.append('resume', file);
     formData.append('email', user.email);
     try {
-      const res = await fetch('/api/resume', { method: 'POST', body: formData });
+      const res = await apiCall('/resume', {
+        method: 'POST',
+        headers: { 'email': user.email },
+        body: formData
+      });
       const data = await res.json();
       if (data.success) {
         setFile(null);
@@ -449,9 +453,10 @@ export default function Dashboard() {
         refreshProfile();
         router.refresh();
       } else {
-        alert('Upload failed: ' + data.error);
+        alert('Upload failed: ' + (data.error || data.detail || 'Unknown error'));
       }
     } catch (err) {
+      console.error(err);
       alert('Upload error');
     }
     setUploading(false);
@@ -460,16 +465,19 @@ export default function Dashboard() {
   const deleteResume = async () => {
     if (!user?.email || !confirm('Delete resume?')) return;
     try {
-      const res = await fetch('/api/resume', {
+      const res = await apiCall('/resume', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email })
+        headers: { 'email': user.email }
       });
       if (res.ok) {
         refreshProfile();
         router.refresh();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert('Delete failed: ' + (data.error || data.detail || 'Unknown error'));
       }
     } catch (err) {
+      console.error(err);
       alert('Delete error');
     }
   };
@@ -478,17 +486,19 @@ export default function Dashboard() {
     if (!profile?.resume) return alert('Upload resume first');
     setParsing(true);
     try {
-      const res = await fetch('/api/resume/parse', {
+      const res = await apiCall('/resume/parse', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email })
       });
       const data = await res.json();
       if (data.success) {
         refreshProfile();
         router.refresh();
+      } else {
+        alert('Parse failed: ' + (data.error || data.detail || 'Unknown error'));
       }
     } catch (err) {
+      console.error(err);
       alert('Parse error');
     }
     setParsing(false);
