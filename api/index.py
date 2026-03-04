@@ -720,11 +720,8 @@ async def evaluate(payload: dict, email: str = Header(None)):
         
         # Enforce UI rules by removing invalid scores based on input type
         if "scores" in evaluation:
-            if input_type == "TEXT":
-                evaluation["scores"].pop("communication_score", None)
-                evaluation["scores"].pop("behavioral_score", None)
-            elif input_type == "VOICE":
-                evaluation["scores"].pop("behavioral_score", None)
+            # Behavioral is Video-only. Keep Communication for all.
+            evaluation["scores"].pop("behavioral_score", None) if input_type != "VIDEO" else None
                 
             # Score Guardian: Enforce mathematical consistency
             scores = evaluation.get("scores")
@@ -738,11 +735,7 @@ async def evaluate(payload: dict, email: str = Header(None)):
     except:
         eval_fallback = generate_fallback_evaluation(answer)
         if "scores" in eval_fallback:
-            if input_type == "TEXT":
-                eval_fallback["scores"].pop("communication_score", None)
-                eval_fallback["scores"].pop("behavioral_score", None)
-            elif input_type == "VOICE":
-                eval_fallback["scores"].pop("behavioral_score", None)
+            eval_fallback["scores"].pop("behavioral_score", None) if input_type != "VIDEO" else None
         return {"evaluation": eval_fallback}
 
 def generate_fallback_evaluation(answer: str) -> dict:

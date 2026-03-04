@@ -1140,12 +1140,13 @@ export default function Dashboard() {
           await generateSkillSummary(skills[currentIndex]?.skill);
 
           if (nextData.should_transition?.complete || currentIndex + 1 >= skills.length) {
+            // Generate summary for the VERY FINAL skill before finishing
+            await generateSkillSummary(skills[currentIndex]?.skill);
+
             // FINISH INTERVIEW LOGIC
             await generateFinalReport();
             setInterviewStep('summary');
             setIsInterviewActive(false);
-
-
           } else {
             // Move to next skill
             const nextIndex = currentIndex + 1;
@@ -1342,14 +1343,16 @@ export default function Dashboard() {
     const scores = history
       .map(h => {
         const evalData = h.evaluation?.evaluation || h.evaluation;
-        return evalData?.scores?.overall_score || evalData?.overall_score || 0;
+        // Prefer explicit numeric scores from backend
+        return evalData?.scores?.overall_score ?? evalData?.overall_score;
       })
       .filter((score): score is number => score !== null && score !== undefined);
 
     if (scores.length === 0) return 0;
 
     const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const baseScore = Math.round(averageScore * 10); // Convert 0-10 to 0-100
+    // backend returns 0-10, we want 0-100%
+    const baseScore = Math.round(averageScore * 10);
 
     // Apply tab switch penalty
     const penalty = Math.min(tabSwitchCount * 5, 30);
@@ -1533,18 +1536,24 @@ export default function Dashboard() {
   const calculateOverallScore = (results: any[]) => {
     if (results.length === 0) return 0;
 
-    const baseScores: Record<string, number> = { expert: 4, strong: 3, medium: 2, weak: 1 };
-    let total = results.reduce((sum, r) => sum + (baseScores[r.capability?.toLowerCase()] || 1), 0);
+    // Prefer numeric scores from backend if available
+    const numericScores = results
+      .map(r => r.scores?.overall_score)
+      .filter((s): s is number => s !== undefined && s !== null);
 
-    const maxPossible = results.length * 4;
+    let rawPercentage = 0;
+    if (numericScores.length > 0) {
+      rawPercentage = (numericScores.reduce((a, b) => a + b, 0) / numericScores.length) * 10;
+    } else {
+      const baseScores: Record<string, number> = { expert: 4, strong: 3, medium: 2, weak: 1 };
+      let total = results.reduce((sum, r) => sum + (baseScores[r.capability?.toLowerCase()] || 1), 0);
+      rawPercentage = (total / (results.length * 4)) * 100;
+    }
 
     const totalTabSwitches = results.reduce((sum, r) => sum + (r.tabSwitches || 0), 0);
     const penalty = Math.min(totalTabSwitches * 5, 30);
 
-    const rawPercentage = (total / maxPossible) * 100;
-    const finalPercentage = Math.max(0, rawPercentage - penalty);
-
-    return Math.round(finalPercentage);
+    return Math.round(Math.max(0, rawPercentage - penalty));
   };
 
   const viewInterviewFeedback = (interview: any) => {
@@ -2521,17 +2530,19 @@ export default function Dashboard() {
                             <strong style={{ fontSize: '18px' }}>{summary.skill}</strong>
                             <span style={{
                               padding: '6px 16px',
-                              background: summary.proficiency_level === 'expert' ? '#ede9fe' :
-                                summary.proficiency_level === 'advanced' ? '#dbeafe' :
-                                  summary.proficiency_level === 'intermediate' ? '#d1fae5' : '#fef3c7',
-                              color: summary.proficiency_level === 'expert' ? '#6d28d9' :
-                                summary.proficiency_level === 'advanced' ? '#1e40af' :
-                                  summary.proficiency_level === 'intermediate' ? '#065f46' : '#92400e',
+                              background: (summary.proficiency_level || summary.level || summary.proficiency) === 'expert' ? '#ede9fe' :
+                                (summary.proficiency_level || summary.level || summary.proficiency) === 'advanced' ? '#dbeafe' :
+                                  (summary.proficiency_level || summary.level || summary.proficiency) === 'strong' ? '#d1fae5' :
+                                    (summary.proficiency_level || summary.level || summary.proficiency) === 'medium' ? '#fef3c7' : '#fee2e2',
+                              color: (summary.proficiency_level || summary.level || summary.proficiency) === 'expert' ? '#6d28d9' :
+                                (summary.proficiency_level || summary.level || summary.proficiency) === 'advanced' ? '#1e40af' :
+                                  (summary.proficiency_level || summary.level || summary.proficiency) === 'strong' ? '#065f46' :
+                                    (summary.proficiency_level || summary.level || summary.proficiency) === 'medium' ? '#92400e' : '#991b1b',
                               borderRadius: '6px',
                               fontWeight: '600',
                               fontSize: '14px'
                             }}>
-                              {summary.proficiency_level?.toUpperCase() || 'UNKNOWN'}
+                              {(summary.proficiency_level || summary.level || summary.proficiency || 'UNKNOWN').toUpperCase()}
                             </span>
                           </div>
                           {summary.strengths && summary.strengths.length > 0 && (
@@ -2588,17 +2599,17 @@ export default function Dashboard() {
                             <strong style={{ fontSize: '18px' }}>{r.skill}</strong>
                             <span style={{
                               padding: '6px 16px',
-                              background: r.capability === 'expert' ? '#ede9fe' :
-                                r.capability === 'strong' ? '#d1fae5' :
-                                  r.capability === 'medium' ? '#fef3c7' : '#fee2e2',
-                              color: r.capability === 'expert' ? '#6d28d9' :
-                                r.capability === 'strong' ? '#065f46' :
-                                  r.capability === 'medium' ? '#92400e' : '#991b1b',
+                              background: (r.capability || r.proficiency_level) === 'expert' ? '#ede9fe' :
+                                (r.capability || r.proficiency_level) === 'strong' ? '#d1fae5' :
+                                  (r.capability || r.proficiency_level) === 'medium' ? '#fef3c7' : '#fee2e2',
+                              color: (r.capability || r.proficiency_level) === 'expert' ? '#6d28d9' :
+                                (r.capability || r.proficiency_level) === 'strong' ? '#065f46' :
+                                  (r.capability || r.proficiency_level) === 'medium' ? '#92400e' : '#991b1b',
                               borderRadius: '6px',
                               fontWeight: '600',
                               fontSize: '14px'
                             }}>
-                              {r.capability?.toUpperCase() || 'UNKNOWN'}
+                              {(r.capability || r.proficiency_level || 'UNKNOWN').toUpperCase()}
                             </span>
                           </div>
                           {r.tabSwitches > 0 && (
