@@ -235,39 +235,6 @@ async def delete_resume(email: str = Header(None)):
         save_profiles(profiles)
     return {"success": True}
 
-@app.post("/api/resume/parse")
-async def parse_resume(payload: dict):
-    ensure_dirs()
-    email = payload.get("email")
-    if not email: return {"success": False, "error": "Email required"}
-    safe_email = email.replace("@", "_").replace(".", "_")
-    file_path = os.path.join(RESUMES_DIR, f"{safe_email}.pdf")
-    
-    if not os.path.exists(file_path): raise HTTPException(status_code=404, detail="No resume")
-    
-    try:
-        with pdfplumber.open(file_path) as pdf:
-            text = "\n".join([page.extract_text() or "" for page in pdf.pages])
-        if len(text) > 4000: text = text[:4000]
-            
-        prompt = f"Extract technical skills from CV text: {text}. Return ONLY a JSON array of objects with 'skill' and 'experience_level'."
-        ai_response = call_llm(prompt)
-        matched_skills = extract_json(ai_response)
-        
-        if not isinstance(matched_skills, list): matched_skills = []
-        final_skills = [s.get("skill", "Unknown") for s in matched_skills if isinstance(s, dict)]
-        parsed_data = {"skills": final_skills, "skillDetails": matched_skills, "parsedAt": datetime.now().isoformat()}
-        
-        profiles = get_profiles()
-        user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
-        if user_idx > -1: profiles[user_idx]["parsedResume"] = parsed_data
-        else: profiles.append({"email": email, "parsedResume": parsed_data})
-        save_profiles(profiles)
-            
-        return {"success": True, "skills": final_skills}
-    except Exception as e:
-        logger.error(f"Parse error: {e}")
-        return {"success": False}
 
 # --- Interview Endpoints ---
 
@@ -519,15 +486,37 @@ async def evaluate(payload: dict):
                 eval_fallback["scores"].pop("behavioral_score", None)
         return {"evaluation": eval_fallback}
 
+    vision_context = ""
+    frames = payload.get("video_frames", [])
+    if input_type == "VIDEO" and frames:
+        client = get_groq_client()
+        if client:
+            try:
+                content: list[dict[str, Any]] = [{"type": "text", "text": "Analyze these video frames from an interview. 1. Is the candidate's face clearly visible? 2. Are they making good eye contact with the camera, or looking away? 3. Is the camera covered/blank? Keep it under 30 words focusing strictly on these behavioral aspects."}]
+                for f in frames:
+                    content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{f}"}})
+                v_resp = client.chat.completions.create(
+                    model="llama-3.2-11b-vision-preview",
+                    messages=[{"role": "user", "content": content}],
+                    temperature=0.3,
+                    max_tokens=200
+                )
+                vision_context = f"\nBEHAVIORAL VIDEO ANALYSIS:\n{v_resp.choices[0].message.content.strip()}\n"
+            except Exception as e:
+                logger.error(f"Vision AI error: {e}")
+
     prompt = f"""
     Evaluate candidate's technical answer.
     SKILL: {skill} | INPUT: {input_type} | Q: {question} | A: {answer}
+    {vision_context}
     
     STRICT SCORING RULES:
     1. Base Evaluation: If the answer is "I don't know", "idk", extremely brief (e.g., < 10 words without substance), or completely irrelevant, give a technical score of 0 or 1, and be harsh in the feedback.
     2. TEXT Input: Score ONLY Technical + Confidence. (Communication and Behavioral MUST be 0).
     3. VOICE Input: Score Technical + Communication + Confidence. (Behavioral MUST be 0).
-    4. VIDEO Input: Score all 4 (Technical, Confidence, Communication, Behavioral).
+    4. VIDEO Input: Score all 4. 
+       - IMPORTANT: If 'BEHAVIORAL VIDEO ANALYSIS' states the face is missing, covered, blank, or looking away, you MUST severely penalize the Behavioral score (give 0-3) and note it in feedback.
+    5. COMMUNICATION: Be extremely strict on filler words (um, ah, like) and hesitation. If pacing is rushed or unstructured, lower the communication and confidence scores. 
     
     Return ONLY JSON with this EXACT nested structure:
     {{

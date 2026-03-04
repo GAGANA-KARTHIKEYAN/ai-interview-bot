@@ -74,6 +74,10 @@ export default function Dashboard() {
   const cameraTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recognitionRef = useRef<any>(null);
 
+  // ========== VIDEO ANALYSIS FRAMES ==========
+  const [videoFrames, setVideoFrames] = useState<string[]>([]);
+  const frameCaptureIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // ========== TAB SWITCH DETECTION ==========
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [showTabWarning, setShowTabWarning] = useState(false);
@@ -370,6 +374,30 @@ export default function Dashboard() {
       setIsRecording(true);
       setRecordingTimeLeft(180);
 
+      // Start capturing frames for AI vision analysis
+      setVideoFrames([]);
+      if (videoRef.current) {
+        frameCaptureIntervalRef.current = setInterval(() => {
+          if (videoRef.current) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 320; // low res for LLM
+            canvas.height = 240;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+              const base64Frame = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+              setVideoFrames(prev => {
+                const newFrames = [...prev, base64Frame];
+                if (newFrames.length > 3) {
+                  return [newFrames[0], newFrames[Math.floor(newFrames.length / 2)], newFrames[newFrames.length - 1]];
+                }
+                return newFrames;
+              });
+            }
+          }
+        }, 5000); // capture every 5 seconds
+      }
+
       if (cameraTimerRef.current) {
         clearInterval(cameraTimerRef.current);
       }
@@ -409,6 +437,11 @@ export default function Dashboard() {
     if (cameraTimerRef.current) {
       clearInterval(cameraTimerRef.current);
       cameraTimerRef.current = null;
+    }
+
+    if (frameCaptureIntervalRef.current) {
+      clearInterval(frameCaptureIntervalRef.current);
+      frameCaptureIntervalRef.current = null;
     }
   };
 
@@ -482,27 +515,7 @@ export default function Dashboard() {
     }
   };
 
-  const parseResume = async () => {
-    if (!profile?.resume) return alert('Upload resume first');
-    setParsing(true);
-    try {
-      const res = await apiCall('/resume/parse', {
-        method: 'POST',
-        body: JSON.stringify({ email: user.email })
-      });
-      const data = await res.json();
-      if (data.success) {
-        refreshProfile();
-        router.refresh();
-      } else {
-        alert('Parse failed: ' + (data.error || data.detail || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Parse error');
-    }
-    setParsing(false);
-  };
+
 
   const logout = () => {
     localStorage.removeItem('user');
@@ -832,7 +845,8 @@ export default function Dashboard() {
           question: currentQuestion,
           answer: answer,
           skill: skills[currentIndex]?.skill,
-          history: questionHistory
+          history: questionHistory,
+          video_frames: videoFrames
         })
       });
 
@@ -1282,7 +1296,8 @@ export default function Dashboard() {
           answer: answer,
           skill: skills[currentIndex]?.skill,
           terminated: isTerminated,
-          tabSwitches: tabSwitchCount
+          tabSwitches: tabSwitchCount,
+          video_frames: videoFrames
         }),
         signal: controller.signal
       });
@@ -1824,9 +1839,6 @@ export default function Dashboard() {
                   View PDF
                 </a>
                 <br />
-                <button onClick={parseResume} disabled={parsing} className="btn" style={{ background: parsing ? '#d1d5db' : '#8b5cf6', marginRight: '10px' }}>
-                  {parsing ? 'Parsing...' : 'Parse Resume'}
-                </button>
                 <button onClick={deleteResume} className="btn btn-danger">
                   Delete
                 </button>
@@ -1845,20 +1857,6 @@ export default function Dashboard() {
                   {uploading ? 'Uploading...' : 'Upload Resume'}
                 </button>
               </div>
-            )}
-
-            {profile?.parsedResume && (
-              <>
-                <hr style={{ margin: '30px 0', border: 'none', height: '2px', background: '#e2e8f0' }} />
-                <h3 style={{ fontSize: '22px', fontWeight: '600', color: '#475569' }}>Skills Extracted</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '15px' }}>
-                  {profile.parsedResume.skills?.slice(0, 12).map((skill: string, i: number) => (
-                    <span key={i} className="skill-tag">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </>
             )}
           </div>
         )}
@@ -2600,6 +2598,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }
