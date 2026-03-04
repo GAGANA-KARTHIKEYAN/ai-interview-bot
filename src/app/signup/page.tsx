@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/api';
 import Link from 'next/link';
 
 export default function Signup() {
@@ -16,121 +15,96 @@ export default function Signup() {
     setError('');
     setLoading(true);
     try {
-      const data = await apiClient('/api/auth', {
+      const res = await fetch('/api/auth', {
         method: 'POST',
-        body: JSON.stringify({ type: 'signup', email, password, name }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'signup', name, email, password })
       });
-      router.push('/login');
-    } catch (err: any) {
-      setError(err.message || 'Server error. Try again.');
+      const data = await res.json();
+      
+      if (data.success) {
+        router.push('/login');
+      } else {
+        setError(data.error || 'Signup failed');
+      }
+    } catch (err) {
+      setError('Network error');
     }
     setLoading(false);
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'radial-gradient(circle at top right, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-      padding: '20px',
-      fontFamily: "'Inter', sans-serif"
+    <div style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      background: '#f3f4f6' 
     }}>
-      <div style={{
-        padding: '50px',
-        background: 'rgba(255, 255, 255, 0.03)',
-        backdropFilter: 'blur(15px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '24px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+      <div style={{ 
+        padding: '40px', 
+        background: 'white', 
+        borderRadius: '12px', 
+        boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
         width: '100%',
-        maxWidth: '450px',
-        color: 'white'
+        maxWidth: '400px'
       }}>
-        <h1 style={{
-          textAlign: 'center',
-          marginBottom: '40px',
-          fontSize: '32px',
-          fontWeight: '700',
-          background: 'linear-gradient(to right, #60a5fa, #a855f7)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
-        }}>
-          Get Started
-        </h1>
-
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Full Name</label>
-          <input
-            placeholder="John Doe"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{
-              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
-              fontSize: '16px', color: 'white', outline: 'none'
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Email Address</label>
-          <input
-            type="email"
-            placeholder="name@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{
-              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
-              fontSize: '16px', color: 'white', outline: 'none'
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '30px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Password</label>
-          <input
-            type="password"
-            placeholder="Min 6 characters"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{
-              width: '100%', padding: '14px', background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
-              fontSize: '16px', color: 'white', outline: 'none'
-            }}
-          />
-        </div>
-
+        <h1 style={{ textAlign: 'center', marginBottom: '30px', color: '#1f2937' }}>Sign Up</h1>
+        
+        <input
+          placeholder="Full Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{
+            width: '100%', padding: '12px', marginBottom: '16px', border: '1px solid #d1d5db',
+            borderRadius: '8px', fontSize: '16px'
+          }}
+        />
+        
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{
+            width: '100%', padding: '12px', marginBottom: '16px', border: '1px solid #d1d5db',
+            borderRadius: '8px', fontSize: '16px'
+          }}
+        />
+        
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          style={{
+            width: '100%', padding: '12px', marginBottom: '20px', border: '1px solid #d1d5db',
+            borderRadius: '8px', fontSize: '16px'
+          }}
+        />
+        
         {error && (
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
-            color: '#fca5a5', padding: '12px', borderRadius: '10px', marginBottom: '20px', textAlign: 'center'
-          }}>
+          <p style={{ color: '#ef4444', marginBottom: '16px', textAlign: 'center' }}>
             {error}
-          </div>
+          </p>
         )}
-
+        
         <button
           onClick={handleSignup}
           disabled={loading || !name || !email || !password}
           style={{
-            width: '100%', padding: '16px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            color: 'white', border: 'none', borderRadius: '14px', fontSize: '18px', fontWeight: '600',
+            width: '100%', padding: '14px', background: '#10b981', color: 'white',
+            border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '500',
             cursor: loading || !name || !email || !password ? 'not-allowed' : 'pointer',
-            opacity: loading || !name || !email || !password ? 0.6 : 1,
-            boxShadow: '0 10px 15px -3px rgba(16, 185, 129, 0.3)',
-            transition: 'transform 0.2s'
+            opacity: loading || !name || !email || !password ? 0.6 : 1
           }}
         >
-          {loading ? 'Creating Experience...' : 'Create Account'}
+          {loading ? 'Creating...' : 'Create Account'}
         </button>
-
-        <p style={{ textAlign: 'center', marginTop: '30px', color: 'rgba(255,255,255,0.5)' }}>
+        
+        <p style={{ textAlign: 'center', marginTop: '20px', color: '#6b7280' }}>
           Already have an account?{' '}
-          <Link href="/login" style={{ color: '#10b981', textDecoration: 'none', fontWeight: '500' }}>
+          <Link href="/login" style={{ color: '#3b82f6', textDecoration: 'none' }}>
             Login
           </Link>
         </p>

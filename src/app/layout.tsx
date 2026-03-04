@@ -16,6 +16,8 @@ export default function RootLayout({
       <body
         style={{
           margin: 0,
+          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont",
+          backgroundColor: "#f9fafb",
         }}
       >
         {children}

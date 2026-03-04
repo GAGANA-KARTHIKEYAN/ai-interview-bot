@@ -1,8 +1,6 @@
 'use client';
-
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/api';
 
 export default function Dashboard() {
   // ========== USER STATE ==========
@@ -41,6 +39,26 @@ export default function Dashboard() {
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
+
+  const API_BASE = "https://ai-interview-bot-docker.onrender.com";
+  // Helper function for making API calls
+  const apiCall = async (endpoint: string, options: RequestInit = {}) => {
+    const url = process.env.NODE_ENV === 'production'
+      ? `/api${endpoint}`  // Use relative path in production
+      : `${API_BASE}/api${endpoint}`;  // Use full URL in development
+
+    console.log(`🌐 API Call: ${url}`, options.method || 'GET');
+    return fetch(url, options);
+  };
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔧 Environment:', process.env.NODE_ENV);
+    console.log('🔧 API_BASE from env:', process.env.NEXT_PUBLIC_API_URL);
+    console.log('🔧 Final API_BASE:', API_BASE);
+    console.log('🔧 Test URL:', `${API_BASE}/api/health`);
+  }, []);
   // ========== VOICE SYNTHESIS ============
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
 
@@ -69,24 +87,34 @@ export default function Dashboard() {
   const [timerActive, setTimerActive] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ========== PROFILE FUNCTIONS ==========
-  const refreshProfile = useCallback(async () => {
-    if (!user?.email) return;
-    try {
-      const data = await apiClient('/api/profile', {
-        email: user.email,
-        cache: 'no-store'
-      });
+  // Debug logging for API configuration
+  useEffect(() => {
+    console.log('🔧 Environment:', process.env.NODE_ENV);
+    console.log('🔧 API Base:', API_BASE);
+    console.log('🔧 Production Mode:', process.env.NODE_ENV === 'production');
+    console.log('🔧 Sample API URL (health):',
+      process.env.NODE_ENV === 'production'
+        ? '/api/health'
+        : `${API_BASE}/api/health`
+    );
+  }, []);
 
-      // Correct the resume URL for same-origin Vercel
-      if (data.resume && data.resume.startsWith('/api/uploads')) {
-        // No modification needed as it's already a correct relative path
-      }
-      setProfile(data);
-    } catch (err) {
-      console.error('Profile refresh failed:', err);
-      setProfile({ email: user?.email, resume: null, parsedResume: null });
-    }
+  // ========== PROFILE FUNCTIONS ==========
+  const refreshProfile = useCallback(() => {
+    if (!user?.email) return;
+    fetch('/api/profile', {
+      headers: { 'email': user.email },
+      cache: 'no-store'
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Profile fetch failed');
+        return res.json();
+      })
+      .then(setProfile)
+      .catch(err => {
+        console.error('Profile refresh failed:', err);
+        setProfile({ email: user?.email, resume: null, parsedResume: null });
+      });
   }, [user?.email]);
 
   useEffect(() => {
@@ -392,12 +420,15 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      // apiClient throws if response not ok
-      await apiClient('/health', {
+      const response = await apiCall('/health', {
         method: 'GET',
-        // signal: AbortSignal.timeout(3000) // apiClient handles timeout or we can pass it
+        signal: AbortSignal.timeout(3000)
       });
-      setBackendStatus('✓ Backend is running');
+      if (response.ok) {
+        setBackendStatus('✓ Backend is running');
+      } else {
+        setBackendStatus('✗ Backend error');
+      }
     } catch (err) {
       setBackendStatus('✗ Backend not running');
     }
@@ -410,11 +441,8 @@ export default function Dashboard() {
     formData.append('resume', file);
     formData.append('email', user.email);
     try {
-      const data = await apiClient('/api/resume', {
-        method: 'POST',
-        body: formData,
-        email: user.email // apiClient puts this in the header
-      });
+      const res = await fetch('/api/resume', { method: 'POST', body: formData });
+      const data = await res.json();
       if (data.success) {
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -423,8 +451,8 @@ export default function Dashboard() {
       } else {
         alert('Upload failed: ' + data.error);
       }
-    } catch (err: any) {
-      alert('Upload error: ' + (err.message || 'Server error'));
+    } catch (err) {
+      alert('Upload error');
     }
     setUploading(false);
   };
@@ -432,14 +460,17 @@ export default function Dashboard() {
   const deleteResume = async () => {
     if (!user?.email || !confirm('Delete resume?')) return;
     try {
-      await apiClient('/api/resume', {
+      const res = await fetch('/api/resume', {
         method: 'DELETE',
-        email: user.email
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email })
       });
-      refreshProfile();
-      router.refresh();
-    } catch (err: any) {
-      alert('Delete error: ' + (err.message || 'Server error'));
+      if (res.ok) {
+        refreshProfile();
+        router.refresh();
+      }
+    } catch (err) {
+      alert('Delete error');
     }
   };
 
@@ -447,17 +478,18 @@ export default function Dashboard() {
     if (!profile?.resume) return alert('Upload resume first');
     setParsing(true);
     try {
-      const data = await apiClient('/api/resume/parse', {
+      const res = await fetch('/api/resume/parse', {
         method: 'POST',
-        body: JSON.stringify({ email: user.email }),
-        email: user.email
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email })
       });
+      const data = await res.json();
       if (data.success) {
         refreshProfile();
         router.refresh();
       }
-    } catch (err: any) {
-      alert('Parse error: ' + (err.message || 'Server error'));
+    } catch (err) {
+      alert('Parse error');
     }
     setParsing(false);
   };
@@ -513,10 +545,19 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const data = await apiClient('/upload-and-analyze', {
+      const res = await apiCall('/upload-and-analyze', {
         method: "POST",
-        body: fd
+        body: fd,
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      const data = await res.json();
       console.log("Backend response:", data);
 
       // Get skills from response
@@ -604,13 +645,16 @@ export default function Dashboard() {
     setDetailedFeedback(null);
 
     try {
-      const data = await apiClient('/start-interview', {
+      const response = await apiCall('/start-interview', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skills: skills,
           userLevel: 'intermediate'
         })
       });
+
+      const data = await response.json();
 
       if (data.success) {
         setInterviewSession(data.interview_state);
@@ -771,8 +815,9 @@ export default function Dashboard() {
 
     try {
       // Evaluate this answer
-      const evalData = await apiClient('/evaluate', {
+      const evalResponse = await apiCall('/evaluate', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: currentQuestion,
           answer: answer,
@@ -780,6 +825,8 @@ export default function Dashboard() {
           history: questionHistory
         })
       });
+
+      const evalData = await evalResponse.json();
       const evaluation = evalData.evaluation || evalData;
 
       // Store detailed feedback
@@ -988,8 +1035,9 @@ export default function Dashboard() {
       const skillsRemaining = skills.slice(currentIndex + 1).map(s => s.skill);
 
       // Generate next question
-      const nextData = await apiClient('/next-question', {
+      const nextResponse = await apiCall('/next-question', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skill: skills[currentIndex]?.skill,
           answer: questionHistory[questionHistory.length - 1]?.answer || '',
@@ -998,6 +1046,8 @@ export default function Dashboard() {
           skillsRemaining: skillsRemaining
         })
       });
+
+      const nextData = await nextResponse.json();
 
       if (nextData.success) {
         setCurrentAnalysis(nextData.analysis || {});
@@ -1083,14 +1133,17 @@ export default function Dashboard() {
 
   const generateSkillSummary = async (skill: string) => {
     try {
-      const summary = await apiClient('/generate-skill-summary', {
+      const response = await apiCall('/generate-skill-summary', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skill: skill,
           history: questionHistory,
           evaluations: questionHistory.map(h => h.evaluation)
         })
       });
+
+      const summary = await response.json();
       setSkillSummaries([...skillSummaries, summary]);
 
     } catch (error) {
@@ -1100,8 +1153,9 @@ export default function Dashboard() {
 
   const generateFinalReport = async () => {
     try {
-      const report = await apiClient('/final-report', {
+      const response = await apiCall('/final-report', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           skills: skills,
           all_qa: questionHistory,
@@ -1109,6 +1163,8 @@ export default function Dashboard() {
           skillSummaries: skillSummaries
         })
       });
+
+      const report = await response.json();
 
       // Save interview results
       saveDynamicInterviewResults(report);
@@ -1205,16 +1261,25 @@ export default function Dashboard() {
     }
 
     try {
-      const data = await apiClient('/evaluate', {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const res = await apiCall('/evaluate', {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: currentQuestion,
           answer: answer,
           skill: skills[currentIndex]?.skill,
           terminated: isTerminated,
           tabSwitches: tabSwitchCount
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+
+      const data = await res.json();
       const e = data.evaluation || data;
 
       // Store detailed feedback
@@ -1407,105 +1472,102 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      padding: '40px 20px',
-      background: 'radial-gradient(circle at top left, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-      fontFamily: "'Inter', sans-serif"
-    }}>
+    <div style={{ minHeight: '100vh', padding: '40px 20px', background: '#f8fafc' }}>
       <style dangerouslySetInnerHTML={{
         __html: `
         .card, .interview-card { 
-          background: rgba(255, 255, 255, 0.03); 
+          background: white; 
           padding: 30px; 
-          border-radius: 20px; 
-          backdrop-filter: blur(15px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-          margin-bottom: 30px; 
-          color: white;
+          border-radius: 12px; 
+          box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
+          margin-bottom: 20px; 
+          border: 1px solid #e5e7eb;
         }
         .hidden { display: none !important; }
         .skill-tag { 
           display: inline-block; 
-          background: rgba(96, 165, 250, 0.1); 
-          color: #60a5fa; 
+          background: #e0e7ff; 
+          color: #1e3a8a; 
           padding: 8px 16px; 
-          border-radius: 12px; 
+          border-radius: 20px; 
           margin: 6px; 
           font-size: 14px;
-          border: 1px solid rgba(96, 165, 250, 0.2);
           font-weight: 500; 
         }
         .btn { 
           padding: 12px 24px; 
-          border-radius: 12px; 
+          border-radius: 8px; 
           border: none; 
-          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); 
+          background: #3b82f6; 
           color: white; 
           font-size: 16px; 
-          font-weight: 600;
+          font-weight: 500;
           cursor: pointer; 
           margin: 5px; 
           transition: all 0.2s;
-          box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
         }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 15px 20px -5px rgba(59, 130, 246, 0.4); }
-        .btn-secondary { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
-        .btn-success { background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3); }
-        .btn-danger { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.3); }
-        .btn-warning { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); box-shadow: 0 10px 15px -3px rgba(245, 158, 11, 0.3); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+        .btn:hover { background: #2563eb; transform: translateY(-1px); }
+        .btn-secondary { background: #6b7280; }
+        .btn-secondary:hover { background: #4b5563; }
+        .btn-success { background: #10b981; }
+        .btn-success:hover { background: #059669; }
+        .btn-danger { background: #ef4444; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-warning { background: #f59e0b; color: white; }
+        .btn-warning:hover { background: #d97706; }
+        .btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
         .textarea { 
           width: 100%; 
           height: 160px; 
-          padding: 20px; 
-          border-radius: 16px; 
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: white;
+          padding: 16px; 
+          border-radius: 8px; 
+          border: 2px solid #d1d5db; 
           font-family: inherit; 
           resize: vertical; 
-          margin: 20px 0; 
+          margin: 15px 0; 
           font-size: 16px;
-          outline: none;
           transition: border-color 0.2s;
         }
-        .textarea:focus { border-color: #3b82f6; }
+        .textarea:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
         .backend-status {
           padding: 12px 20px;
-          border-radius: 12px;
+          border-radius: 8px;
           margin: 10px 0;
-          font-size: 14px;
-          font-weight: 500;
-          text-align: center;
+          font-size: 16px;
         }
-        .status-good { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
-        .status-bad { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
-        .status-checking { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+        .status-good { background: #d1fae5; color: #065f46; }
+        .status-bad { background: #fee2e2; color: #991b1b; }
+        .status-checking { background: #fef3c7; color: #92400e; }
         .camera-container {
           width: 100%;
           max-width: 640px;
-          margin: 24px auto;
-          border-radius: 20px;
+          margin: 20px auto;
+          border-radius: 12px;
           overflow: hidden;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-          background: #000;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+          background: #1e293b;
           position: relative;
         }
-        .camera-container video { width: 100%; display: block; }
+        .camera-container video {
+          width: 100%;
+          display: block;
+        }
         .timer-display {
           font-size: 24px;
-          font-weight: 700;
+          font-weight: 600;
           text-align: center;
           padding: 12px;
-          background: rgba(239, 68, 68, 0.1);
-          color: #ef4444;
-          border-radius: 12px;
-          margin: 20px 0;
-          border: 1px solid rgba(239, 68, 68, 0.2);
+          background: #1e293b;
+          color: white;
+          border-radius: 8px;
+          margin: 15px 0;
         }
         .recording-indicator {
           display: inline-block;
@@ -1517,59 +1579,129 @@ export default function Dashboard() {
           animation: pulse 1s infinite;
         }
         @keyframes pulse {
-          0% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.2); }
-          100% { opacity: 1; transform: scale(1); }
+          0% { opacity: 1; }
+          50% { opacity: 0.5; }
+          100% { opacity: 1; }
+        }
+        .warning-banner {
+          background: #fee2e2;
+          color: #991b1b;
+          padding: 16px;
+          border-radius: 8px;
+          margin: 15px 0;
+          border: 2px solid #ef4444;
+          text-align: center;
+          font-weight: 600;
+          font-size: 16px;
+          animation: pulse-warning 1s infinite;
+        }
+        @keyframes pulse-warning {
+          0% { background: #fee2e2; }
+          50% { background: #fecaca; }
+          100% { background: #fee2e2; }
+        }
+        .termination-banner {
+          background: #7f1d1d;
+          color: white;
+          padding: 20px;
+          border-radius: 8px;
+          margin: 15px 0;
+          text-align: center;
+          font-weight: 600;
+          font-size: 18px;
+          border: 2px solid #ef4444;
+        }
+        .tab-switch-counter {
+          font-size: 14px;
+          color: #6b7280;
+          text-align: right;
+          margin: 5px 0;
+          font-weight: 500;
         }
         .nav-tab {
           padding: 12px 24px;
-          background: rgba(255, 255, 255, 0.05);
-          color: rgba(255, 255, 255, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 12px;
+          background: #e5e7eb;
+          color: #374151;
+          border: none;
+          border-radius: 8px;
           cursor: pointer;
-          font-weight: 600;
+          font-weight: 500;
           transition: all 0.2s;
           font-size: 16px;
         }
         .nav-tab.active {
-          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+          background: #3b82f6;
           color: white;
-          border: none;
-          box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
         }
         .section-title {
-          font-size: 32px;
-          font-weight: 800;
-          color: white;
+          font-size: 28px;
+          font-weight: 700;
+          color: #1e293b;
           margin-bottom: 25px;
-          letter-spacing: -0.02em;
+        }
+        .result-item {
+          padding: 20px;
+          margin: 10px 0;
+          background: white;
+          border-radius: 8px;
+          border: 1px solid #e5e7eb;
+          font-size: 16px;
+        }
+        .interview-history {
+          max-height: 500px;
+          overflow-y: auto;
+          padding: 5px;
+        }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 20px;
+          margin-top: 20px;
         }
         .feedback-panel {
-          background: rgba(0, 0, 0, 0.2);
+          background: #f8fafc;
           padding: 30px;
-          border-radius: 16px;
+          border-radius: 12px;
           white-space: pre-wrap;
           max-height: 600px;
           overflow-y: auto;
           margin-bottom: 20px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 2px solid #e5e7eb;
           font-size: 16px;
           line-height: 1.8;
-          color: rgba(255, 255, 255, 0.9);
+          font-family: 'Courier New', monospace;
+        }
+        .generating-indicator {
+          display: inline-block;
+          width: 20px;
+          height: 20px;
+          border: 3px solid #3b82f6;
+          border-top-color: transparent;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin-right: 10px;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .score-card {
+          background: white;
+          border-radius: 12px;
+          padding: 20px;
+          border: 1px solid #e5e7eb;
+          margin-bottom: 20px;
+        }
+        .score-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 15px;
+          margin: 20px 0;
         }
         .score-item {
-          background: rgba(255, 255, 255, 0.03);
-          padding: 20px;
-          border-radius: 16px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: #f1f5f9;
+          padding: 15px;
+          border-radius: 8px;
           text-align: center;
-        }
-        #interview-skillTitle {
-          background: linear-gradient(to right, #60a5fa, #a855f7);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          font-weight: 800;
         }
         .score-value {
           font-size: 36px;
@@ -1620,9 +1752,9 @@ export default function Dashboard() {
 
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* HEADER */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '50px' }}>
-          <h1 style={{ fontSize: '32px', fontWeight: '800', color: 'white' }}>
-            Welcome back, <span style={{ background: 'linear-gradient(to right, #60a5fa, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{user?.name}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#1e293b' }}>
+            Welcome, <span style={{ color: '#3b82f6' }}>{user?.name}</span>
           </h1>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
@@ -1796,31 +1928,63 @@ export default function Dashboard() {
                             flexWrap: 'wrap',
                             gap: '15px'
                           }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '18px', fontWeight: '700', color: 'white' }}>
-                                  <strong>Date:</strong> {new Date(interview.date).toLocaleDateString()}
+                            <div style={{ flex: 2, minWidth: '250px' }}>
+                              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <span style={{ fontSize: '14px', color: '#4b5563' }}>
+                                  <strong>Date:</strong> {new Date(interview.date).toLocaleDateString()} {new Date(interview.date).toLocaleTimeString()}
                                 </span>
                                 <span style={{
                                   padding: '6px 12px',
-                                  background: interview.terminated ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                                  color: interview.terminated ? '#ef4444' : '#10b981',
-                                  borderRadius: '8px',
-                                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                                  background: interview.terminated ? '#fee2e2' : '#d1fae5',
+                                  color: interview.terminated ? '#991b1b' : '#065f46',
+                                  borderRadius: '6px',
                                   fontWeight: '600',
                                   fontSize: '14px'
                                 }}>
                                   Score: {interview.overallScore || 0}%
                                 </span>
+                                {interview.type === 'dynamic' && (
+                                  <span style={{
+                                    padding: '6px 12px',
+                                    background: '#dbeafe',
+                                    color: '#1e40af',
+                                    borderRadius: '6px',
+                                    fontSize: '13px'
+                                  }}>
+                                    Dynamic
+                                  </span>
+                                )}
+                                {interview.partial && (
+                                  <span style={{
+                                    padding: '6px 12px',
+                                    background: '#fef3c7',
+                                    color: '#92400e',
+                                    borderRadius: '6px',
+                                    fontSize: '13px'
+                                  }}>
+                                    Partial
+                                  </span>
+                                )}
+                                {interview.terminated && (
+                                  <span style={{
+                                    padding: '6px 12px',
+                                    background: '#fee2e2',
+                                    color: '#991b1b',
+                                    borderRadius: '6px',
+                                    fontSize: '13px'
+                                  }}>
+                                    Terminated
+                                  </span>
+                                )}
                               </div>
-                              <div style={{ marginTop: '12px' }}>
-                                <span style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.6)' }}>
+                              <div style={{ marginTop: '8px' }}>
+                                <span style={{ fontSize: '14px', color: '#6b7280' }}>
                                   <strong>Skills:</strong> {interview.skills?.slice(0, 5).join(', ')}{interview.skills?.length > 5 ? '...' : ''}
                                 </span>
                               </div>
                               {interview.totalTabSwitches > 0 && (
-                                <div style={{ marginTop: '8px', fontSize: '13px', color: '#ef4444' }}>
-                                  ⚠️ Tab switches: {interview.totalTabSwitches}
+                                <div style={{ marginTop: '4px', fontSize: '13px', color: '#ef4444' }}>
+                                  Tab switches: {interview.totalTabSwitches}
                                 </div>
                               )}
                             </div>
@@ -1848,19 +2012,19 @@ export default function Dashboard() {
 
                     {/* Summary Statistics */}
                     <div className="stats-grid">
-                      <div className="score-item">
-                        <div style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.5)' }}>Total Interviews</div>
-                        <div style={{ fontSize: '32px', fontWeight: '800', color: 'white' }}>{previousInterviews.length}</div>
+                      <div style={{ padding: '20px', background: '#f1f5f9', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '14px', color: '#6b7280' }}>Total Interviews</div>
+                        <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e293b' }}>{previousInterviews.length}</div>
                       </div>
-                      <div className="score-item">
-                        <div style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.5)' }}>Average Score</div>
-                        <div style={{ fontSize: '32px', fontWeight: '800', color: '#60a5fa' }}>
-                          {previousInterviews.length > 0 ? Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length) : 0}%
+                      <div style={{ padding: '20px', background: '#f1f5f9', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '14px', color: '#6b7280' }}>Average Score</div>
+                        <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e293b' }}>
+                          {Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length)}%
                         </div>
                       </div>
-                      <div className="score-item">
-                        <div style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.5)' }}>Terminated</div>
-                        <div style={{ fontSize: '32px', fontWeight: '800', color: '#ef4444' }}>
+                      <div style={{ padding: '20px', background: '#f1f5f9', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '14px', color: '#6b7280' }}>Terminated</div>
+                        <div style={{ fontSize: '32px', fontWeight: '700', color: '#ef4444' }}>
                           {previousInterviews.filter(i => i.terminated).length}
                         </div>
                       </div>
@@ -1902,12 +2066,11 @@ export default function Dashboard() {
                   accept=".pdf,.docx"
                   style={{
                     width: '100%',
-                    padding: '20px',
-                    margin: '25px 0',
-                    border: '2px dashed rgba(255, 255, 255, 0.1)',
-                    borderRadius: '16px',
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    color: 'white',
+                    padding: '16px',
+                    margin: '15px 0',
+                    border: '2px dashed #3b82f6',
+                    borderRadius: '8px',
+                    background: '#f8fafc',
                     cursor: 'pointer',
                     fontSize: '16px'
                   }}
@@ -1916,10 +2079,10 @@ export default function Dashboard() {
                 <div id="interview-uploadStatus" style={{
                   padding: '12px',
                   margin: '10px 0',
-                  borderRadius: '12px',
-                  background: 'rgba(255, 255, 255, 0.03)',
+                  borderRadius: '6px',
+                  background: '#f8fafc',
                   fontSize: '16px',
-                  color: 'rgba(255, 255, 255, 0.6)'
+                  color: '#6b7280'
                 }}></div>
 
                 <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
@@ -1950,13 +2113,13 @@ export default function Dashboard() {
                 <div id="interview-skillsList" style={{
                   display: 'flex',
                   flexWrap: 'wrap',
-                  gap: '12px',
-                  margin: '30px 0',
-                  padding: '30px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  borderRadius: '20px',
+                  gap: '10px',
+                  margin: '20px 0',
+                  padding: '20px',
+                  background: '#f8fafc',
+                  borderRadius: '8px',
                   minHeight: '100px',
-                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                  border: '2px solid #e5e7eb'
                 }}>
                   {skills.map((skill, index) => (
                     <span key={index} className="skill-tag">
@@ -2016,21 +2179,20 @@ export default function Dashboard() {
                 </h4>
 
                 <div style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  padding: '30px',
-                  borderRadius: '16px',
-                  marginBottom: '25px',
-                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                  background: '#f8fafc',
+                  padding: '25px',
+                  borderRadius: '8px',
+                  marginBottom: '20px',
+                  border: '2px solid #e5e7eb'
                 }}>
-                  <h4 style={{ marginTop: 0, color: 'rgba(255, 255, 255, 0.5)', fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Question:</h4>
+                  <h4 style={{ marginTop: 0, color: '#334155', fontSize: '16px', fontWeight: '600' }}>Question:</h4>
                   <p id="interview-questionText" style={{
-                    fontSize: '22px',
+                    fontSize: '18px',
                     lineHeight: '1.6',
-                    color: 'white',
-                    fontWeight: '600',
-                    margin: '15px 0 0 0'
+                    color: '#1f2937',
+                    margin: '10px 0 0 0'
                   }}>
-                    {currentQuestion || "Preparing your personalized question..."}
+                    {currentQuestion || "Loading question..."}
                   </p>
                 </div>
 

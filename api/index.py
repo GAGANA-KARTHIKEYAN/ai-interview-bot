@@ -33,13 +33,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Vercel persistence: /tmp is the only writable directory
-DATA_DIR = "/tmp/data"
-RESUMES_DIR = os.path.join(DATA_DIR, "resumes")
-PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
+# Startup logic to ensure directories exist in /tmp
+def ensure_dirs():
+    try:
+        os.makedirs(RESUMES_DIR, exist_ok=True)
+        logger.info(f"Initialized directories at {DATA_DIR}")
+    except Exception as e:
+        logger.error(f"Failed to create directories: {e}")
 
-os.makedirs(RESUMES_DIR, exist_ok=True)
+@app.on_event("startup")
+async def startup_event():
+    ensure_dirs()
 
 def get_profiles():
     if not os.path.exists(PROFILES_FILE): return []
@@ -112,7 +116,17 @@ async def get_status():
     return {
         "status": "online",
         "groq_configured": bool(os.getenv("GROQ_API_KEY")),
-        "timestamp": datetime.now().isoformat()
+        "writable_dir_exists": os.path.exists(DATA_DIR),
+        "timestamp": datetime.now().isoformat(),
+        "env": "production" if os.getenv("VERCEL") else "development"
+    }
+
+@app.get("/api/debug")
+async def debug_info():
+    return {
+        "cwd": os.getcwd(),
+        "dir_list": os.listdir("/") if os.path.exists("/") else [],
+        "tmp_list": os.listdir("/tmp") if os.path.exists("/tmp") else []
     }
 
 @app.post("/api/auth")
