@@ -1140,8 +1140,7 @@ export default function Dashboard() {
           await generateSkillSummary(skills[currentIndex]?.skill);
 
           if (nextData.should_transition?.complete || currentIndex + 1 >= skills.length) {
-            // Generate summary for the VERY FINAL skill before finishing
-            await generateSkillSummary(skills[currentIndex]?.skill);
+            // Already summarized current skill above. Proceed to finish.
 
             // FINISH INTERVIEW LOGIC
             await generateFinalReport();
@@ -2530,14 +2529,14 @@ export default function Dashboard() {
                             <strong style={{ fontSize: '18px' }}>{summary.skill}</strong>
                             <span style={{
                               padding: '6px 16px',
-                              background: (summary.proficiency_level || summary.level || summary.proficiency) === 'expert' ? '#ede9fe' :
-                                (summary.proficiency_level || summary.level || summary.proficiency) === 'advanced' ? '#dbeafe' :
-                                  (summary.proficiency_level || summary.level || summary.proficiency) === 'strong' ? '#d1fae5' :
-                                    (summary.proficiency_level || summary.level || summary.proficiency) === 'medium' ? '#fef3c7' : '#fee2e2',
-                              color: (summary.proficiency_level || summary.level || summary.proficiency) === 'expert' ? '#6d28d9' :
-                                (summary.proficiency_level || summary.level || summary.proficiency) === 'advanced' ? '#1e40af' :
-                                  (summary.proficiency_level || summary.level || summary.proficiency) === 'strong' ? '#065f46' :
-                                    (summary.proficiency_level || summary.level || summary.proficiency) === 'medium' ? '#92400e' : '#991b1b',
+                              background: (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'expert' ? '#ede9fe' :
+                                (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'advanced' ? '#dbeafe' :
+                                  (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'strong' ? '#d1fae5' :
+                                    (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'medium' ? '#fef3c7' : '#fee2e2',
+                              color: (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'expert' ? '#6d28d9' :
+                                (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'advanced' ? '#1e40af' :
+                                  (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'strong' ? '#065f46' :
+                                    (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'medium' ? '#92400e' : '#991b1b',
                               borderRadius: '6px',
                               fontWeight: '600',
                               fontSize: '14px'
@@ -2576,8 +2575,8 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Results Summary (for standard interviews) */}
-                {interviewMode !== 'dynamic' && results.length > 0 && (
+                {/* Aggregated Performance Summary */}
+                {(results.length > 0 || (interviewMode === 'dynamic' && questionHistory.length > 0)) && (
                   <div style={{ marginBottom: '30px' }}>
                     <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Skill Performance</h4>
                     <div style={{
@@ -2588,90 +2587,41 @@ export default function Dashboard() {
                       overflowY: 'auto',
                       border: '2px solid #e5e7eb'
                     }}>
-                      {results.map((r, i) => (
-                        <div key={i} className="result-item" style={{
-                          borderLeft: `6px solid ${r.capability === 'expert' ? '#8b5cf6' :
-                            r.capability === 'strong' ? '#10b981' :
-                              r.capability === 'medium' ? '#f59e0b' : '#ef4444'
-                            }`
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong style={{ fontSize: '18px' }}>{r.skill}</strong>
-                            <span style={{
-                              padding: '6px 16px',
-                              background: (r.capability || r.proficiency_level) === 'expert' ? '#ede9fe' :
-                                (r.capability || r.proficiency_level) === 'strong' ? '#d1fae5' :
-                                  (r.capability || r.proficiency_level) === 'medium' ? '#fef3c7' : '#fee2e2',
-                              color: (r.capability || r.proficiency_level) === 'expert' ? '#6d28d9' :
-                                (r.capability || r.proficiency_level) === 'strong' ? '#065f46' :
-                                  (r.capability || r.proficiency_level) === 'medium' ? '#92400e' : '#991b1b',
-                              borderRadius: '6px',
-                              fontWeight: '600',
-                              fontSize: '14px'
-                            }}>
-                              {(r.capability || r.proficiency_level || 'UNKNOWN').toUpperCase()}
-                            </span>
-                          </div>
-                          {r.tabSwitches > 0 && (
-                            <p style={{ marginTop: '8px', fontSize: '14px', color: '#ef4444' }}>
-                              Tab switches during this answer: {r.tabSwitches}
-                            </p>
-                          )}
-                          {r.reasoning && (
-                            <p style={{ marginTop: '10px', fontSize: '14px', color: '#6b7280' }}>
-                              {r.reasoning}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      {/* Combine results and questionHistory for a unified unique skill list */}
+                      {Array.from(new Set([
+                        ...results.map(r => r.skill),
+                        ...questionHistory.map(h => h.skill)
+                      ])).filter(Boolean).map((skillName, i) => {
+                        const skillResult = results.findLast(r => r.skill === skillName);
+                        const historyItem = questionHistory.findLast(h => h.skill === skillName);
+                        // Normalization: Extract capability from wherever it lives
+                        const rawData = skillResult || (historyItem?.evaluation?.evaluation || historyItem?.evaluation);
+                        const cap = (rawData?.capability || rawData?.proficiency_level || '').toLowerCase();
 
-                {/* Dynamic Interview Results */}
-                {interviewMode === 'dynamic' && questionHistory.length > 0 && (
-                  <div style={{ marginBottom: '30px' }}>
-                    <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Interview Summary</h4>
-                    <div style={{
-                      background: '#f8fafc',
-                      padding: '20px',
-                      borderRadius: '8px',
-                      maxHeight: '400px',
-                      overflowY: 'auto',
-                      border: '2px solid #e5e7eb'
-                    }}>
-                      {questionHistory.map((item, i) => {
-                        const evalData = item.evaluation?.evaluation || item.evaluation;
                         return (
                           <div key={i} className="result-item" style={{
-                            borderLeft: `6px solid ${evalData?.capability === 'expert' ? '#8b5cf6' :
-                              evalData?.capability === 'strong' ? '#10b981' :
-                                evalData?.capability === 'medium' ? '#f59e0b' : '#ef4444'
+                            borderLeft: `6px solid ${cap === 'expert' ? '#8b5cf6' :
+                              cap === 'strong' ? '#10b981' :
+                                cap === 'medium' ? '#f59e0b' : '#ef4444'
                               }`
                           }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <strong style={{ fontSize: '18px' }}>{item.skill}</strong>
+                              <strong style={{ fontSize: '18px' }}>{skillName}</strong>
                               <span style={{
                                 padding: '6px 16px',
-                                background: evalData?.capability === 'expert' ? '#ede9fe' :
-                                  evalData?.capability === 'strong' ? '#d1fae5' :
-                                    evalData?.capability === 'medium' ? '#fef3c7' : '#fee2e2',
-                                color: evalData?.capability === 'expert' ? '#6d28d9' :
-                                  evalData?.capability === 'strong' ? '#065f46' :
-                                    evalData?.capability === 'medium' ? '#92400e' : '#991b1b',
+                                background: cap === 'expert' ? '#ede9fe' :
+                                  cap === 'strong' ? '#d1fae5' :
+                                    cap === 'medium' ? '#fef3c7' : '#fee2e2',
+                                color: cap === 'expert' ? '#6d28d9' :
+                                  cap === 'strong' ? '#065f46' :
+                                    cap === 'medium' ? '#92400e' : '#991b1b',
                                 borderRadius: '6px',
                                 fontWeight: '600',
                                 fontSize: '14px'
                               }}>
-                                {evalData?.capability?.toUpperCase() || 'UNKNOWN'}
+                                {(cap || 'UNKNOWN').toUpperCase()}
                               </span>
                             </div>
-                            <p style={{ marginTop: '10px', fontSize: '14px', color: '#4b5563' }}>
-                              <strong>Q:</strong> {item.question.substring(0, 100)}...
-                            </p>
-                            <p style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
-                              <strong>Score:</strong> {evalData?.scores?.overall_score || evalData?.overall_score || 'N/A'}/10
-                            </p>
                           </div>
                         );
                       })}
