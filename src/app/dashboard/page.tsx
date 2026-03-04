@@ -160,12 +160,22 @@ export default function Dashboard() {
     setUser(parsedUser);
 
     // Fetch profile and history from backend
-    refreshProfile();
-    fetchInterviewHistory(parsedUser.email);
+    // Use parsedUser.email directly because setUser is async
+    if (parsedUser.email) {
+      fetch(`/api/profile`, {
+        headers: { 'email': parsedUser.email },
+        cache: 'no-store'
+      })
+        .then(res => res.json())
+        .then(setProfile)
+        .catch(console.error);
+
+      fetchInterviewHistory(parsedUser.email);
+    }
 
     checkBackendStatus();
     setLoading(false);
-  }, [router, refreshProfile, fetchInterviewHistory]);
+  }, [router, fetchInterviewHistory]);
 
   // ========== TAB SWITCH DETECTION ==========
   useEffect(() => {
@@ -1152,6 +1162,8 @@ export default function Dashboard() {
             setCurrentQuestion(nextQuestionText);
             setQuestionHistory([]); // Reset history for new skill
             setDetailedFeedback(null);
+            setInputMethod('TEXT');
+            setVideoFrames([]);
 
             // Update title
             const title = document.getElementById("interview-skillTitle") as HTMLElement;
@@ -1170,6 +1182,8 @@ export default function Dashboard() {
           setCurrentQuestion(questionText);
           setCurrentAnalysis(nextData.analysis || {});
           setDetailedFeedback(null);
+          setInputMethod('TEXT');
+          setVideoFrames([]);
 
           setInterviewStep('interview');
 

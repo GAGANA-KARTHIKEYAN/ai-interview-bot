@@ -695,6 +695,7 @@ async def evaluate(payload: dict, email: str = Header(None)):
        - IMPORTANT: If 'BEHAVIORAL VIDEO ANALYSIS' states the face is missing, covered, blank, or looking away, you MUST severely penalize the Behavioral score (give 0-3) and note it in feedback.
     5. COMMUNICATION: Be extremely strict on filler words (um, ah, like, basically, you know, actually) and hesitation markers. Scan the transcript specifically for these tokens. If pacing is rushed, fragmented, or unstructured, lower both the communication and confidence scores. 
     6. HESITATION: If the candidate repeats words or makes long pauses (represented as '...' or similar in transcript), flag 'hesitation_markers' as true.
+    7. OVERALL SCORE: The 'overall_score' MUST be the exact mathematical average of the provided sub-scores.
     
     Return ONLY JSON with this EXACT nested structure:
     {{
@@ -724,6 +725,14 @@ async def evaluate(payload: dict, email: str = Header(None)):
                 evaluation["scores"].pop("behavioral_score", None)
             elif input_type == "VOICE":
                 evaluation["scores"].pop("behavioral_score", None)
+                
+            # Score Guardian: Enforce mathematical consistency
+            scores = evaluation.get("scores")
+            if isinstance(scores, dict):
+                active_scores = [float(v) for k, v in scores.items() if k != "overall_score" and isinstance(v, (int, float))]
+                if active_scores:
+                    avg = sum(active_scores) / len(active_scores)
+                    scores["overall_score"] = round(float(avg), 1)
                 
         return {"evaluation": evaluation}
     except:
@@ -770,7 +779,7 @@ def generate_fallback_evaluation(answer: str) -> dict:
 @app.post("/api/generate-skill-summary")
 async def generate_skill_summary(payload: dict):
     skill, history = payload.get("skill"), payload.get("history", [])
-    prompt = f"Summarize candidate proficiency in {skill} based on history: {json.dumps(history[:3])}. Return ONLY a JSON object with keys: proficiency_level, strengths (list), weaknesses (list), summary."
+    prompt = f"Summarize candidate proficiency in {skill} based on these interview exchanges: {json.dumps(history)}. Return ONLY a JSON object with keys: proficiency_level (expert/strong/medium/weak), strengths (list), weaknesses (list), summary. Be technical and specific."
     
     raw_summary = extract_json(call_llm(prompt)) or {}
     
