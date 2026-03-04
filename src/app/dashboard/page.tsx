@@ -32,6 +32,7 @@ export default function Dashboard() {
   const [questionHistory, setQuestionHistory] = useState<any[]>([]);
   const [skillSummaries, setSkillSummaries] = useState<any[]>([]);
   const [isGeneratingNext, setIsGeneratingNext] = useState(false);
+  const [inputMethod, setInputMethod] = useState<'TEXT' | 'VOICE' | 'VIDEO'>('TEXT');
   const [interviewMode, setInterviewMode] = useState<'standard' | 'dynamic'>('dynamic');
   const [conversationFlow, setConversationFlow] = useState<any[]>([]);
   const [detailedFeedback, setDetailedFeedback] = useState<any>(null);
@@ -398,6 +399,7 @@ export default function Dashboard() {
 
       mediaRecorder.start();
       setIsRecording(true);
+      setInputMethod('VIDEO');
       setRecordingTimeLeft(180);
 
       // Start capturing frames for AI vision analysis
@@ -558,6 +560,10 @@ export default function Dashboard() {
 
   const confirmQuit = () => {
     setShowQuitConfirm(false);
+    setFeedbackText("");
+    setDetailedFeedback(null);
+    setInputMethod('TEXT');
+    startAnswerTimer();
     stopCamera();
     stopVideoRecording();
     stopAnswerTimer();
@@ -824,6 +830,7 @@ export default function Dashboard() {
     recognition.interimResults = false;
 
     recognition.onstart = () => {
+      setInputMethod('VOICE');
       if (answerBoxRef.current) {
         answerBoxRef.current.value = "Listening...";
       }
@@ -875,6 +882,7 @@ export default function Dashboard() {
           answer: answer,
           skill: skills[currentIndex]?.skill,
           history: questionHistory,
+          input_type: inputMethod,
           video_frames: videoFrames
         })
       });
@@ -1344,6 +1352,7 @@ export default function Dashboard() {
           skill: skills[currentIndex]?.skill,
           terminated: isTerminated,
           tabSwitches: tabSwitchCount,
+          input_type: inputMethod,
           video_frames: videoFrames
         }),
         signal: controller.signal

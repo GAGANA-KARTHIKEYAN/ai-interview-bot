@@ -582,9 +582,13 @@ async def next_question(payload: dict):
 async def evaluate(payload: dict):
     """Detailed 4-metric evaluation"""
     question, answer, skill = payload.get("question", ""), payload.get("answer", "") or "", payload.get("skill", "")
-    input_type = "TEXT"
-    if "[VIDEO RECORDING" in answer: input_type = "VIDEO"
-    elif "Voice input" in answer: input_type = "VOICE"
+    
+    # Prioritize explicit input_type from payload
+    input_type = payload.get("input_type")
+    if not input_type:
+        input_type = "TEXT"
+        if "[VIDEO RECORDING" in answer: input_type = "VIDEO"
+        elif "Voice input" in answer: input_type = "VOICE"
 
     # Strict pre-check for non-answers to bypass LLM entirely
     clean_answer = answer.replace("[VIDEO RECORDING", "").split("]")[-1].strip() if "]" in answer else answer
