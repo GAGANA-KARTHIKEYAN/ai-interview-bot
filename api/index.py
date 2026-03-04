@@ -52,6 +52,7 @@ async def startup_event():
     ensure_dirs()
 
 def get_profiles():
+    ensure_dirs()
     if not os.path.exists(PROFILES_FILE): return []
     try:
         with open(PROFILES_FILE, 'r') as f: return json.load(f)
@@ -191,6 +192,7 @@ async def update_profile(payload: dict):
 
 @app.post("/api/resume")
 async def upload_resume(resume: UploadFile = File(...), email: str = Header(None)):
+    ensure_dirs()
     if not email: raise HTTPException(status_code=400, detail="Email required")
     safe_email = email.replace("@", "_").replace(".", "_")
     file_name = f"{safe_email}.pdf"
@@ -235,6 +237,7 @@ async def delete_resume(email: str = Header(None)):
 
 @app.post("/api/resume/parse")
 async def parse_resume(payload: dict):
+    ensure_dirs()
     email = payload.get("email")
     if not email: return {"success": False, "error": "Email required"}
     safe_email = email.replace("@", "_").replace(".", "_")
@@ -271,15 +274,25 @@ async def parse_resume(payload: dict):
 @app.post("/api/upload-and-analyze")
 async def upload_and_analyze(cv: UploadFile = File(...)):
     """Analyze CV using AI to extract skills with experience levels"""
+    ensure_dirs()
     try:
+        # Save to /tmp to ensure pdfplumber can read it correctly in Vercel
+        temp_path = os.path.join(DATA_DIR, "temp_upload.pdf")
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(cv.file, buffer)
+            
         # Extract text from PDF
         text_chunks: list[str] = []
-        with pdfplumber.open(cv.file) as pdf:
+        with pdfplumber.open(temp_path) as pdf:
             for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text_chunks.append(str(page_text))
-        
+                    
+        # Cleanup
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
         text: str = "\n".join(text_chunks)
         
         # Truncate if too long
@@ -489,10 +502,22 @@ async def next_question(payload: dict):
 @app.post("/api/evaluate")
 async def evaluate(payload: dict):
     """Detailed 4-metric evaluation"""
-    question, answer, skill = payload.get("question", ""), payload.get("answer", ""), payload.get("skill", "")
+    question, answer, skill = payload.get("question", ""), payload.get("answer", "") or "", payload.get("skill", "")
     input_type = "TEXT"
     if "[VIDEO RECORDING" in answer: input_type = "VIDEO"
     elif "Voice input" in answer: input_type = "VOICE"
+
+    # Strict pre-check for non-answers to bypass LLM entirely
+    clean_answer = answer.replace("[VIDEO RECORDING", "").split("]")[-1].strip() if "]" in answer else answer
+    if len(clean_answer.split()) < 5 or clean_answer.lower().strip() in ["i don't know", "idk", "no idea", "basically", "nothing"]:
+        eval_fallback = generate_fallback_evaluation(answer)
+        if "scores" in eval_fallback:
+            if input_type == "TEXT":
+                eval_fallback["scores"].pop("communication_score", None)
+                eval_fallback["scores"].pop("behavioral_score", None)
+            elif input_type == "VOICE":
+                eval_fallback["scores"].pop("behavioral_score", None)
+        return {"evaluation": eval_fallback}
 
     prompt = f"""
     Evaluate candidate's technical answer.
