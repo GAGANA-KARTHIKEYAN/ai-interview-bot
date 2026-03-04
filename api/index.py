@@ -33,6 +33,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Vercel persistence: /tmp is the only writable directory
+DATA_DIR = "/tmp/data"
+RESUMES_DIR = os.path.join(DATA_DIR, "resumes")
+PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+
 # Startup logic to ensure directories exist in /tmp
 def ensure_dirs():
     try:
