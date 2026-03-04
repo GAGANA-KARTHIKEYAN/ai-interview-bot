@@ -260,17 +260,20 @@ async def update_profile(payload: dict):
 
 @app.get("/api/history")
 async def get_history(email: str = Header(None)):
-    if not email: raise HTTPException(status_code=400, detail="Email required")
+    user_email = email
+    if not user_email: raise HTTPException(status_code=400, detail="Email required")
+    logger.info(f"Fetching history for {user_email}")
     
     if supabase:
         try:
-            res = supabase.table("history").select("*").eq("email", email).order("created_at", desc=True).execute()
+            res = supabase.table("history").select("*").eq("email", user_email).order("created_at", desc=True).execute()
+            logger.info(f"Supabase found {len(res.data)} records for {user_email}")
             return {"history": [r["data"] for r in res.data]}
         except Exception as e:
-            logger.error(f"Supabase history fetch failed: {e}")
+            logger.error(f"Supabase history fetch failed for {user_email}: {e}")
             
     # Local fallback
-    safe_email = email.replace("@", "_").replace(".", "_")
+    safe_email = user_email.replace("@", "_").replace(".", "_")
     history_file = os.path.join(DATA_DIR, f"history_{safe_email}.json")
     if os.path.exists(history_file):
         with open(history_file, "r") as f:
@@ -628,9 +631,10 @@ async def next_question(payload: dict):
     return {"success": True, "next_question": nxt_q, "analysis": analysis, "should_transition": {"transition": False}}
 
 @app.post("/api/evaluate")
-async def evaluate(payload: dict):
+async def evaluate(payload: dict, email: str = Header(None)):
     """Detailed 4-metric evaluation"""
     question, answer, skill = payload.get("question", ""), payload.get("answer", "") or "", payload.get("skill", "")
+    user_email = email or payload.get("email", "unknown")
     
     # Prioritize explicit input_type from payload
     input_type = payload.get("input_type")
@@ -638,10 +642,13 @@ async def evaluate(payload: dict):
         input_type = "TEXT"
         if "[VIDEO RECORDING" in answer: input_type = "VIDEO"
         elif "Voice input" in answer: input_type = "VOICE"
+    
+    logger.info(f"Evaluation for {user_email}: Input={input_type}, Skill={skill}")
 
     # Strict pre-check for non-answers to bypass LLM entirely
     clean_answer = answer.replace("[VIDEO RECORDING", "").split("]")[-1].strip() if "]" in answer else answer
     if len(clean_answer.split()) < 5 or clean_answer.lower().strip() in ["i don't know", "idk", "no idea", "basically", "nothing"]:
+        logger.info(f"Short answer fallback for {user_email}")
         eval_fallback = generate_fallback_evaluation(answer)
         if "scores" in eval_fallback:
             if input_type == "TEXT":
@@ -669,6 +676,11 @@ async def evaluate(payload: dict):
                 vision_context = f"\nBEHAVIORAL VIDEO ANALYSIS:\n{v_resp.choices[0].message.content.strip()}\n"
             except Exception as e:
                 logger.error(f"Vision AI error: {e}")
+                vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: Visual data processing encountered an error, fall back to default behavioral assessment.\n"
+        else:
+            vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: Vision AI not configured.\n"
+    elif input_type == "VIDEO":
+        vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: No video frames provided for analysis.\n"
 
     prompt = f"""
     Evaluate candidate's technical answer.
@@ -757,10 +769,20 @@ def generate_fallback_evaluation(answer: str) -> dict:
 
 @app.post("/api/generate-skill-summary")
 async def generate_skill_summary(payload: dict):
-    skill, history, items = payload.get("skill"), payload.get("history", []), payload.get("evaluations", [])
-    prompt = f"Summarize candidate proficiency in {skill} based on history: {json.dumps(history[:3])}. Return JSON: {{ 'skill': '{skill}', 'proficiency_level': '...', 'strengths': [], 'weaknesses': [], 'recommendations': [], 'summary': '...' }}"
-    summary = extract_json(call_llm(prompt)) or {"skill": skill, "proficiency_level": "intermediate", "summary": "Assessment complete."}
-    return summary
+    skill, history = payload.get("skill"), payload.get("history", [])
+    prompt = f"Summarize candidate proficiency in {skill} based on history: {json.dumps(history[:3])}. Return ONLY a JSON object with keys: proficiency_level, strengths (list), weaknesses (list), summary."
+    
+    raw_summary = extract_json(call_llm(prompt)) or {}
+    
+    # Normalization
+    normalized = {
+        "skill": skill,
+        "proficiency_level": raw_summary.get("proficiency_level") or raw_summary.get("proficiency") or "intermediate",
+        "strengths": raw_summary.get("strengths") or [],
+        "weaknesses": raw_summary.get("weaknesses") or [],
+        "summary": raw_summary.get("summary") or "Assessment complete."
+    }
+    return normalized
 
 @app.post("/api/final-report")
 async def final_report(payload: dict):

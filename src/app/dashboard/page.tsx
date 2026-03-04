@@ -62,6 +62,7 @@ export default function Dashboard() {
     };
 
     console.log(`🌐 API Call: ${url}`, mergedOptions.method || 'GET');
+    if (mergedOptions.headers) console.log(`📋 Headers:`, { ...mergedOptions.headers });
     return fetch(url, mergedOptions);
   }, [BACKEND, API_BASE]);
 
@@ -139,6 +140,7 @@ export default function Dashboard() {
       const res = await apiCall('/history');
       if (res.ok) {
         const data = await res.json();
+        console.log(`📜 History fetched for ${email}:`, data.history?.length || 0, "records");
         setPreviousInterviews(data.history || []);
       }
     } catch (err) {
@@ -392,9 +394,8 @@ export default function Dashboard() {
           }
         }
 
-        setTimeout(() => {
-          submitAnswer();
-        }, 1500);
+        // Only auto-submit if we transitioned from recording state non-interactively
+        // Otherwise, the submitButton handler handles it
       };
 
       mediaRecorder.start();
@@ -618,30 +619,32 @@ export default function Dashboard() {
       const data = await res.json();
       console.log("Backend response:", data);
 
-      // Get skills from response
-      let matchedSkills = [];
+      // Get skills from response and deduplicate
+      let rawMatchedSkills = [];
       if (data.matched_skills && Array.isArray(data.matched_skills)) {
-        matchedSkills = data.matched_skills;
+        rawMatchedSkills = data.matched_skills;
       } else if (data.skills && Array.isArray(data.skills)) {
-        matchedSkills = data.skills;
-      } else {
-        matchedSkills = [];
+        rawMatchedSkills = data.skills;
       }
+
+      const matchedSkills = rawMatchedSkills.filter((v: any, i: number, a: any[]) =>
+        v.skill && a.findIndex(t => (t.skill === v.skill)) === i
+      );
 
       if (matchedSkills.length === 0) {
         alert("No skills matched. Using default skills.");
         // Use default skills
-        matchedSkills = [
+        setSkills([
           { skill: "Python", experience_level: "intermediate", category: "language", typical_questions: ["Explain Python decorators", "What are list comprehensions?"] },
           { skill: "JavaScript", experience_level: "intermediate", category: "language", typical_questions: ["Explain closures", "How does the event loop work?"] },
           { skill: "React", experience_level: "intermediate", category: "framework", typical_questions: ["Explain the virtual DOM", "What are hooks?"] },
           { skill: "Node.js", experience_level: "intermediate", category: "framework", typical_questions: ["How does event loop work?", "Explain middleware"] },
           { skill: "SQL", experience_level: "intermediate", category: "database", typical_questions: ["Explain JOIN types", "What's normalization?"] },
           { skill: "Git", experience_level: "intermediate", category: "tool", typical_questions: ["Explain branching strategy", "How to resolve conflicts?"] }
-        ];
+        ]);
+      } else {
+        setSkills(matchedSkills);
       }
-
-      setSkills(matchedSkills);
 
       // Display skills in the UI
       const list = document.getElementById("interview-skillsList");
@@ -1215,7 +1218,16 @@ export default function Dashboard() {
       });
 
       const summary = await response.json();
-      setSkillSummaries([...skillSummaries, summary]);
+
+      setSkillSummaries(prev => {
+        const existingIdx = prev.findIndex(s => s.skill === summary.skill);
+        if (existingIdx !== -1) {
+          const updated = [...prev];
+          updated[existingIdx] = summary;
+          return updated;
+        }
+        return [...prev, summary];
+      });
 
     } catch (error) {
       console.error('Failed to generate skill summary:', error);
