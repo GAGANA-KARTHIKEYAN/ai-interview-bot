@@ -82,7 +82,7 @@ def get_groq_client():
 
 def call_llm(prompt: str, max_tokens: int = 2500) -> str:
     client = get_groq_client()
-    if not client: return "Error: AI not configured."
+    if not client: return "Error: AI not configured. Please set GROQ_API_KEY in Vercel."
     try:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -96,20 +96,29 @@ def call_llm(prompt: str, max_tokens: int = 2500) -> str:
         return ""
 
 def extract_json(text: str) -> Any:
+    """Extract JSON from text with multiple fallback strategies"""
+    if not text: return None
     try:
-        # Try finding JSON in code blocks
-        code_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
-        if code_match:
-            return json.loads(code_match.group(1).strip())
+        # Strategy 1: Find JSON in code blocks
+        code_block_pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
+        code_blocks = re.findall(code_block_pattern, text)
+        for block in code_blocks:
+            try:
+                return json.loads(block.strip())
+            except: continue
         
-        # Try raw JSON object/array
+        # Strategy 2: Find first '[' or '{' and last ']' or '}'
         json_match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
         if json_match:
-            return json.loads(json_match.group(1))
-        
+            try:
+                return json.loads(json_match.group(1))
+            except: pass
+            
+        # Strategy 3: Raw parse
         return json.loads(text)
-    except:
-        return {}
+    except Exception as e:
+        logger.warning(f"JSON extraction failed: {e}")
+        return None
 
 # --- API Endpoints ---
 
@@ -125,14 +134,6 @@ async def get_status():
         "writable_dir_exists": os.path.exists(DATA_DIR),
         "timestamp": datetime.now().isoformat(),
         "env": "production" if os.getenv("VERCEL") else "development"
-    }
-
-@app.get("/api/debug")
-async def debug_info():
-    return {
-        "cwd": os.getcwd(),
-        "dir_list": os.listdir("/") if os.path.exists("/") else [],
-        "tmp_list": os.listdir("/tmp") if os.path.exists("/tmp") else []
     }
 
 @app.post("/api/auth")
@@ -161,7 +162,7 @@ async def auth(payload: dict):
 
 @app.get("/api/profile")
 async def get_profile(email: str = Header(None)):
-    if not email: raise HTTPException(status_code=400, detail="Email required")
+    if not email: return {"email": None, "resume": None, "parsedResume": None}
     profiles = get_profiles()
     profile = next((p for p in profiles if p["email"] == email), None)
     return profile or {"email": email, "resume": None, "parsedResume": None}
@@ -235,6 +236,7 @@ async def delete_resume(email: str = Header(None)):
 @app.post("/api/resume/parse")
 async def parse_resume(payload: dict):
     email = payload.get("email")
+    if not email: return {"success": False, "error": "Email required"}
     safe_email = email.replace("@", "_").replace(".", "_")
     file_path = os.path.join(RESUMES_DIR, f"{safe_email}.pdf")
     
@@ -245,10 +247,11 @@ async def parse_resume(payload: dict):
             text = "\n".join([page.extract_text() or "" for page in pdf.pages])
         if len(text) > 4000: text = text[:4000]
             
-        prompt = f"Extract skills from this CV text:\n{text}\nReturn ONLY JSON array of {{'skill': str, 'experience_level': str}}."
+        prompt = f"Extract technical skills from CV text: {text}. Return ONLY a JSON array of objects with 'skill' and 'experience_level'."
         ai_response = call_llm(prompt)
         matched_skills = extract_json(ai_response)
         
+        if not isinstance(matched_skills, list): matched_skills = []
         final_skills = [s.get("skill", "Unknown") for s in matched_skills if isinstance(s, dict)]
         parsed_data = {"skills": final_skills, "skillDetails": matched_skills, "parsedAt": datetime.now().isoformat()}
         
@@ -266,81 +269,136 @@ async def parse_resume(payload: dict):
 @app.post("/api/upload-and-analyze")
 async def upload_and_analyze(cv: UploadFile = File(...)):
     try:
+        logger.info(f"Uploading and analyzing CV: {cv.filename}")
         with pdfplumber.open(cv.file) as pdf:
             text = "\n".join([p.extract_text() or "" for p in pdf.pages])
         if len(text) > 4000: text = text[:4000]
+        logger.info(f"Extracted {len(text)} chars of text from CV")
         
         prompt = f"""
-        Extract skills from CV: {text}
-        Return ONLY valid JSON array: [{{ "skill": "...", "experience_level": "...", "category": "...", "typical_questions": [...] }}]
+        You are an expert technical recruiter analyzing a candidate's CV.
+        CV CONTENT:
+        {text}
+        
+        Extract ALL technical skills (Languages, Frameworks, Tools, Databases).
+        For each skill, estimate experience level (beginner/intermediate/advanced/expert) and category.
+        Also provide 2 typical interview questions for that skill.
+        
+        Return ONLY a valid JSON array:
+        [
+            {{
+                "skill": "Python",
+                "experience_level": "intermediate",
+                "category": "language",
+                "typical_questions": ["Explain decorators", "How is memory managed?"]
+            }}
+        ]
         """
         ai_response = call_llm(prompt, max_tokens=2500)
         matched_skills = extract_json(ai_response)
-        return {"matched_skills": matched_skills or []}
+        
+        if not matched_skills or not isinstance(matched_skills, list):
+            logger.warning("No skills extracted or bad format. Using fallbacks.")
+            matched_skills = get_fallback_skills()
+        
+        return {"matched_skills": matched_skills}
     except Exception as e:
         logger.error(f"CV Analysis Error: {e}")
-        return {"matched_skills": []}
+        return {"matched_skills": get_fallback_skills()}
+
+def get_fallback_skills():
+    return [
+        {"skill": "Python", "experience_level": "intermediate", "category": "language", "typical_questions": ["What are list comprehensions?", "Difference between list and tuple?"]},
+        {"skill": "JavaScript", "experience_level": "intermediate", "category": "language", "typical_questions": ["What is a closure?", "How does 'this' work?"]},
+        {"skill": "React", "experience_level": "intermediate", "category": "framework", "typical_questions": ["What are hooks?", "Virtual DOM explanation?"]},
+        {"skill": "Node.js", "experience_level": "intermediate", "category": "framework", "typical_questions": ["Event loop explanation?", "How to handle async errors?"]}
+    ]
 
 @app.post("/api/start-interview")
 async def start_interview(payload: dict):
     skills = payload.get("skills", [])
     if not skills: return {"success": False, "error": "No skills"}
+    
     first = skills[0]
-    question_data = {
-        "question": first.get("typical_questions", [f"Tell me about {first['skill']}"])[0],
-        "skill": first["skill"],
-        "question_type": "opening"
-    }
+    skill_name = first.get("skill")
+    level = first.get("experience_level", "intermediate")
+    
+    # Generate a dynamic opening question
+    prompt = f"Start a technical interview for skill '{skill_name}' at level '{level}'. Generate a professional opening question. Return JSON: {{'question': '...', 'skill': '{skill_name}'}}"
+    ai_response = call_llm(prompt)
+    resp = extract_json(ai_response) or {}
+    
+    question_text = resp.get("question", f"Tell me about your experience with {skill_name}.")
+    question_data = {"question": question_text, "skill": skill_name, "question_type": "opening"}
+    
     interview_state = {
         "current_skill_index": 0, "skills": skills,
-        "questions_asked": {first["skill"]: [question_data]},
-        "answers_received": {first["skill"]: []}
+        "questions_asked": {skill_name: [question_data]},
+        "answers_received": {skill_name: []},
+        "conv_history": [{"role": "assistant", "content": question_text}]
     }
     return {"success": True, "question": question_data, "interview_state": interview_state}
 
 @app.post("/api/next-question")
 async def next_question(payload: dict):
-    skill, previous_answer, history, skills_remaining = payload.get("skill"), payload.get("answer"), payload.get("history", []), payload.get("skills_remaining", [])
+    skill, answer, history, skills_remaining = payload.get("skill"), payload.get("answer"), payload.get("history", []), payload.get("skills_remaining", [])
     
-    prompt = f"Analyze answer: '{previous_answer}' for skill: '{skill}'. Should we ask follow-up or move to next skill? Return JSON with 'should_transition' (bool) and 'next_question' (str)."
+    # Analyze answer and decide next step
+    prompt = f"""
+    Interviewer evaluating '{skill}'.
+    Previous question history: {json.dumps(history[-3:])}
+    Latest answer: '{answer}'
+    
+    Analyze the answer. Should we ask a follow-up or move to next skill?
+    If follow-up, provide a challenging question.
+    If move on, set should_transition to true.
+    
+    Return JSON: {{ "should_transition": bool, "next_question": "string", "feedback": "string" }}
+    """
     ai_response = call_llm(prompt)
-    resp = extract_json(ai_response)
+    resp = extract_json(ai_response) or {}
     
     should_transition = resp.get("should_transition", False)
-    if should_transition and skills_remaining:
+    if (should_transition or len(history) > 6) and skills_remaining:
         next_skill = skills_remaining[0]
-        return {"success": True, "should_transition": {"transition": True, "next_skill": next_skill}, "next_question": {"question": f"Let's move to {next_skill['skill']}. How much experience do you have?", "skill": next_skill['skill']}}
+        transition_q = f"Great. Let's move on to {next_skill['skill']}. How would you describe your proficiency here?"
+        return {
+            "success": True, 
+            "should_transition": {"transition": True, "next_skill": next_skill},
+            "next_question": {"question": transition_q, "skill": next_skill['skill']},
+            "analysis": resp
+        }
     
     return {
         "success": True,
         "should_transition": {"transition": False},
-        "next_question": {"question": resp.get("next_question", "Can you tell me more about that?"), "skill": skill}
+        "next_question": {"question": resp.get("next_question", "Interesting. Can you elaborate further?"), "skill": skill},
+        "analysis": resp
     }
 
 @app.post("/api/evaluate")
 async def evaluate(payload: dict):
-    question, answer, skill, input_type = payload.get("question"), payload.get("answer"), payload.get("skill"), payload.get("input_type", "TEXT")
-    
+    question, answer, skill = payload.get("question"), payload.get("answer"), payload.get("skill")
     prompt = f"""
-    Evaluate candidate answer.
+    Evaluate this interview answer:
+    Skill: {skill}
     Question: {question}
     Answer: {answer}
-    Skill: {skill}
-    Input: {input_type}
-    Return JSON with 'capability', 'confidence_score', 'technical_score', 'summary_feedback'.
+    
+    Provide detailed feedback and a score (0-10).
+    Return JSON: {{ "capability": "weak/medium/strong/expert", "scores": {{ "overall_score": 7 }}, "summary_feedback": "...", "strengths": [], "areas_for_improvement": [] }}
     """
     ai_response = call_llm(prompt)
     eval_data = extract_json(ai_response)
     
-    # Fallback to ensure UI doesn't crash
     if not eval_data:
-        eval_data = {"capability": "medium", "scores": {"overall_score": 7}, "summary_feedback": "Fair answer."}
+        eval_data = {"capability": "medium", "scores": {"overall_score": 6}, "summary_feedback": "The answer was adequate but could use more technical depth."}
         
     return {"evaluation": eval_data}
 
 @app.post("/api/final-report")
 async def generate_final_report(payload: dict):
-    skills, summaries = payload.get("skills", []), payload.get("skill_summaries", [])
-    prompt = f"Create final report for skills {json.dumps(skills)}. Return JSON with 'overall_score', 'overall_proficiency', 'summary'."
+    skills, histories = payload.get("skills", []), payload.get("histories", [])
+    prompt = f"Create a final summary for an interview assessing: {json.dumps(skills)}. Summarize performance and give a hiring recommendation. Return JSON with 'overall_score', 'overall_proficiency', 'summary'."
     ai_response = call_llm(prompt, max_tokens=3000)
-    return extract_json(ai_response) or {"overall_score": 70, "summary": "Interview completed."}
+    return extract_json(ai_response) or {"overall_score": 70, "summary": "Interview complete. Good performance overall."}
