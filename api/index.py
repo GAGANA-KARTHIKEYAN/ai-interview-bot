@@ -258,6 +258,55 @@ async def update_profile(payload: dict):
     save_profiles(profiles)
     return {"success": True}
 
+@app.get("/api/history")
+async def get_history(email: str = Header(None)):
+    if not email: raise HTTPException(status_code=400, detail="Email required")
+    
+    if supabase:
+        try:
+            res = supabase.table("history").select("*").eq("email", email).order("created_at", desc=True).execute()
+            return {"history": [r["data"] for r in res.data]}
+        except Exception as e:
+            logger.error(f"Supabase history fetch failed: {e}")
+            
+    # Local fallback
+    safe_email = email.replace("@", "_").replace(".", "_")
+    history_file = os.path.join(DATA_DIR, f"history_{safe_email}.json")
+    if os.path.exists(history_file):
+        with open(history_file, "r") as f:
+            return {"history": json.load(f)}
+    return {"history": []}
+
+@app.post("/api/history")
+async def save_history(payload: dict, email: str = Header(None)):
+    if not email: raise HTTPException(status_code=400, detail="Email required")
+    interview_data = payload.get("interview")
+    if not interview_data: raise HTTPException(status_code=400, detail="Interview data required")
+    
+    if supabase:
+        try:
+            supabase.table("history").insert({
+                "email": email,
+                "data": interview_data,
+                "created_at": datetime.now().isoformat()
+            }).execute()
+        except Exception as e:
+            logger.error(f"Supabase history save failed: {e}")
+            
+    # Local fallback
+    safe_email = email.replace("@", "_").replace(".", "_")
+    history_file = os.path.join(DATA_DIR, f"history_{safe_email}.json")
+    history = []
+    if os.path.exists(history_file):
+        with open(history_file, "r") as f:
+            history = json.load(f)
+    
+    history.insert(0, interview_data)
+    with open(history_file, "w") as f:
+        json.dump(history, f)
+        
+    return {"success": True}
+
 @app.post("/api/resume")
 async def upload_resume(resume: UploadFile = File(...), email: str = Header(None)):
     ensure_dirs()

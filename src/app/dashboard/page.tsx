@@ -1271,7 +1271,11 @@ export default function Dashboard() {
     apiCall('/history', {
       method: 'POST',
       body: JSON.stringify({ interview: interviewData })
-    }).then(() => fetchInterviewHistory(user.email));
+    }).then(async (res) => {
+      if (res.ok) {
+        await fetchInterviewHistory(user.email);
+      }
+    });
 
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
     savedInterviews.push({ ...interviewData, id: Date.now() });
@@ -1485,7 +1489,11 @@ export default function Dashboard() {
     apiCall('/history', {
       method: 'POST',
       body: JSON.stringify({ interview: interviewData })
-    }).then(() => fetchInterviewHistory(user.email));
+    }).then(async (res) => {
+      if (res.ok) {
+        await fetchInterviewHistory(user.email);
+      }
+    });
 
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
     savedInterviews.push({ ...interviewData, id: Date.now() });
@@ -2424,7 +2432,8 @@ export default function Dashboard() {
                     disabled={isGeneratingNext}
                     style={{ padding: '16px 40px', fontSize: '18px' }}
                   >
-                    {currentIndex + 1 < skills.length ? 'Next Question' : 'Finish Interview'}
+                    {interviewMode === 'dynamic' ? 'Next Question' :
+                      (currentIndex + 1 < skills.length ? 'Next Question' : 'Finish Interview')}
                   </button>
                 </div>
               </div>
