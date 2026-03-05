@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [conversationFlow, setConversationFlow] = useState<any[]>([]);
   const [detailedFeedback, setDetailedFeedback] = useState<any>(null);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [viewedScore, setViewedScore] = useState<number | null>(null);
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
@@ -787,6 +788,15 @@ export default function Dashboard() {
   };
 
   const startInterview = () => {
+    setViewedScore(null);
+    setResults([]);
+    setQuestionHistory([]);
+    setSkillSummaries([]);
+    setCurrentIndex(0);
+    setDetailedFeedback(null);
+    setTabSwitchCount(0);
+    setInterviewTerminated(false);
+
     setInterviewMode('dynamic');
     startDynamicInterview();
   };
@@ -1137,13 +1147,19 @@ export default function Dashboard() {
         // Check if we should transition to next skill
         if (nextData.should_transition?.transition) {
           // Generate summary for current skill
-          await generateSkillSummary(skills[currentIndex]?.skill);
+          const skillSummary = await generateSkillSummary(skills[currentIndex]?.skill);
+          const updatedSummaries = [...skillSummaries];
+          if (skillSummary) {
+            const idx = updatedSummaries.findIndex(s => s.skill === skillSummary.skill);
+            if (idx !== -1) updatedSummaries[idx] = skillSummary;
+            else updatedSummaries.push(skillSummary);
+          }
 
           if (nextData.should_transition?.complete || currentIndex + 1 >= skills.length) {
             // Already summarized current skill above. Proceed to finish.
 
             // FINISH INTERVIEW LOGIC
-            await generateFinalReport();
+            await generateFinalReport(updatedSummaries);
             setInterviewStep('summary');
             setIsInterviewActive(false);
           } else {
@@ -1242,13 +1258,16 @@ export default function Dashboard() {
         }
         return [...prev, summary];
       });
+      return summary;
 
     } catch (error) {
       console.error('Failed to generate skill summary:', error);
+      return null;
     }
   };
 
-  const generateFinalReport = async () => {
+  const generateFinalReport = async (latestSummaries?: any[]) => {
+    const summariesToUse = latestSummaries || skillSummaries;
     try {
       const response = await apiCall('/final-report', {
         method: 'POST',
@@ -1257,27 +1276,28 @@ export default function Dashboard() {
           skills: skills,
           all_qa: questionHistory,
           all_evaluations: questionHistory.map(h => h.evaluation),
-          skillSummaries: skillSummaries
+          skillSummaries: summariesToUse
         })
       });
 
       const report = await response.json();
 
       // Save interview results
-      saveDynamicInterviewResults(report);
+      saveDynamicInterviewResults(report, summariesToUse);
 
     } catch (error) {
       console.error('Failed to generate final report:', error);
       // Save without report
-      saveDynamicInterviewResults(null);
+      saveDynamicInterviewResults(null, summariesToUse);
     }
   };
 
-  const saveDynamicInterviewResults = (finalReport: any) => {
+  const saveDynamicInterviewResults = (finalReport: any, latestSummaries?: any[]) => {
     if (!user?.email) return;
 
     stopCamera();
 
+    const summariesToUse = latestSummaries || skillSummaries;
     const overallScore = calculateDynamicOverallScore(questionHistory);
 
     const interviewData = {
@@ -1286,7 +1306,7 @@ export default function Dashboard() {
       skills: skills.map(s => s.skill),
       skillDetails: skills,
       results: questionHistory,
-      skillSummaries: skillSummaries,
+      skillSummaries: summariesToUse,
       finalReport: finalReport,
       overallScore: overallScore,
       conversationFlow: conversationFlow,
@@ -1336,8 +1356,11 @@ export default function Dashboard() {
     setPreviousInterviews(savedInterviews);
   };
 
-  const calculateDynamicOverallScore = (history: any[]) => {
-    if (history.length === 0) return 0;
+  function calculateDynamicOverallScore(history: any[], switches?: number) {
+    if (!history || history.length === 0) return 0;
+
+    // Use provided switches or fallback to current state
+    const totalSwitches = switches !== undefined ? switches : tabSwitchCount;
 
     const scores = history
       .map(h => {
@@ -1354,10 +1377,10 @@ export default function Dashboard() {
     const baseScore = Math.round(averageScore * 10);
 
     // Apply tab switch penalty
-    const penalty = Math.min(tabSwitchCount * 5, 30);
+    const penalty = Math.min(totalSwitches * 5, 30);
 
     return Math.max(0, baseScore - penalty);
-  };
+  }
 
   // ========== STANDARD INTERVIEW FUNCTIONS ==========
   const submitStandardAnswer = async (isTerminated = false) => {
@@ -1532,14 +1555,16 @@ export default function Dashboard() {
     setIsInterviewActive(false);
   };
 
-  const calculateOverallScore = (results: any[]) => {
-    if (results.length === 0) return 0;
+  function calculateOverallScore(results: any[], switches?: number) {
+    if (!results || results.length === 0) return 0;
 
-    // Prefer numeric scores from backend if available
+    // Use provided switches or sum from results
+    const totalSwitches = switches !== undefined ? switches :
+      results.reduce((sum, r) => sum + (r.tabSwitches || 0), 0);
+
     const numericScores = results
       .map(r => r.scores?.overall_score)
       .filter((s): s is number => s !== undefined && s !== null);
-
     let rawPercentage = 0;
     if (numericScores.length > 0) {
       rawPercentage = (numericScores.reduce((a, b) => a + b, 0) / numericScores.length) * 10;
@@ -1548,23 +1573,33 @@ export default function Dashboard() {
       let total = results.reduce((sum, r) => sum + (baseScores[r.capability?.toLowerCase()] || 1), 0);
       rawPercentage = (total / (results.length * 4)) * 100;
     }
-
-    const totalTabSwitches = results.reduce((sum, r) => sum + (r.tabSwitches || 0), 0);
-    const penalty = Math.min(totalTabSwitches * 5, 30);
-
+    const penalty = Math.min(totalSwitches * 5, 30);
     return Math.round(Math.max(0, rawPercentage - penalty));
-  };
+  }
+
 
   const viewInterviewFeedback = (interview: any) => {
+    const historicalScore = interview.overallScore ??
+      (interview.type === 'dynamic' ?
+        calculateDynamicOverallScore(interview.results || [], interview.totalTabSwitches || 0) :
+        calculateOverallScore(interview.results || [], interview.totalTabSwitches || 0));
+
+    setViewedScore(historicalScore);
+
     if (interview.type === 'dynamic') {
-      setResults(interview.results || []);
-      setSkills(interview.skillDetails || interview.skills.map((s: string) => ({ skill: s })));
+      setQuestionHistory(interview.results || []);
+      setResults([]);
+      setSkills(interview.skillDetails || (interview.skills || []).map((s: string) => ({ skill: s })));
       setSkillSummaries(interview.skillSummaries || []);
       setInterviewTerminated(interview.terminated || false);
+      setInterviewMode('dynamic');
     } else {
       setResults(interview.results || []);
+      setQuestionHistory([]);
       setSkills((interview.skills || []).map((s: string) => ({ skill: s })));
+      setSkillSummaries([]);
       setInterviewTerminated(interview.terminated || false);
+      setInterviewMode('standard');
     }
     setInterviewStep('summary');
   };
@@ -2031,8 +2066,13 @@ export default function Dashboard() {
                     </div>
 
                     <div className="interview-history">
-                      {previousInterviews.slice().reverse().map((interview: any, index: number) => {
-                        const originalIndex = previousInterviews.length - 1 - index;
+                      {previousInterviews.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((interview: any, index: number) => {
+                        const originalIndex = previousInterviews.findIndex(i => i === interview);
+                        const displayScore = interview.overallScore ??
+                          (interview.type === 'dynamic' ?
+                            calculateDynamicOverallScore(interview.results || [], interview.totalTabSwitches || 0) :
+                            calculateOverallScore(interview.results || [], interview.totalTabSwitches || 0));
+
                         return (
                           <div key={interview.id || index} style={{
                             background: '#f8fafc',
@@ -2059,7 +2099,7 @@ export default function Dashboard() {
                                   fontWeight: '600',
                                   fontSize: '14px'
                                 }}>
-                                  Score: {interview.overallScore || 0}%
+                                  Score: {displayScore}%
                                 </span>
                                 {interview.type === 'dynamic' && (
                                   <span style={{
@@ -2497,7 +2537,7 @@ export default function Dashboard() {
                   border: `2px solid ${interviewTerminated ? '#ef4444' : '#a7f3d0'}`
                 }}>
                   <h3 style={{ color: interviewTerminated ? '#991b1b' : '#059669', margin: 0, fontSize: '28px' }}>
-                    Overall Score: {interviewMode === 'dynamic' ? calculateDynamicOverallScore(questionHistory) : calculateOverallScore(results)}%
+                    Overall Score: {viewedScore !== null ? viewedScore : (interviewMode === 'dynamic' ? calculateDynamicOverallScore(questionHistory) : calculateOverallScore(results))}%
                   </h3>
                   {interviewTerminated && (
                     <p style={{ color: '#991b1b', marginTop: '10px', fontWeight: '500', fontSize: '16px' }}>
@@ -2506,128 +2546,114 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* Skill Summaries (for dynamic interviews) */}
-                {skillSummaries.length > 0 && (
-                  <div style={{ marginBottom: '30px' }}>
-                    <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Skill Summaries</h4>
-                    <div style={{
-                      background: '#f8fafc',
-                      padding: '20px',
-                      borderRadius: '8px',
-                      maxHeight: '400px',
-                      overflowY: 'auto',
-                      border: '2px solid #e5e7eb'
-                    }}>
-                      {skillSummaries.map((summary, idx) => (
-                        <div key={idx} className="result-item" style={{
-                          borderLeft: `6px solid ${summary.proficiency_level === 'expert' ? '#8b5cf6' :
-                            summary.proficiency_level === 'advanced' ? '#3b82f6' :
-                              summary.proficiency_level === 'intermediate' ? '#10b981' : '#f59e0b'
-                            }`
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong style={{ fontSize: '18px' }}>{summary.skill}</strong>
-                            <span style={{
-                              padding: '6px 16px',
-                              background: (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'expert' ? '#ede9fe' :
-                                (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'advanced' ? '#dbeafe' :
-                                  (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'strong' ? '#d1fae5' :
-                                    (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'medium' ? '#fef3c7' : '#fee2e2',
-                              color: (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'expert' ? '#6d28d9' :
-                                (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'advanced' ? '#1e40af' :
-                                  (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'strong' ? '#065f46' :
-                                    (summary.proficiency_level || summary.level || summary.proficiency || '').toLowerCase() === 'medium' ? '#92400e' : '#991b1b',
-                              borderRadius: '6px',
-                              fontWeight: '600',
-                              fontSize: '14px'
-                            }}>
-                              {(summary.proficiency_level || summary.level || summary.proficiency || 'UNKNOWN').toUpperCase()}
-                            </span>
-                          </div>
-                          {summary.strengths && summary.strengths.length > 0 && (
-                            <div style={{ marginTop: '10px' }}>
-                              <span style={{ fontSize: '14px', fontWeight: '600', color: '#10b981' }}>Strengths:</span>
-                              <ul style={{ margin: '8px 0 0 20px', fontSize: '14px', color: '#6b7280' }}>
-                                {summary.strengths.slice(0, 3).map((s: string, i: number) => (
-                                  <li key={i}>{s}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {summary.weaknesses && summary.weaknesses.length > 0 && (
-                            <div style={{ marginTop: '10px' }}>
-                              <span style={{ fontSize: '14px', fontWeight: '600', color: '#ef4444' }}>Areas to Improve:</span>
-                              <ul style={{ margin: '8px 0 0 20px', fontSize: '14px', color: '#6b7280' }}>
-                                {summary.weaknesses.slice(0, 3).map((s: string, i: number) => (
-                                  <li key={i}>{s}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {summary.summary && (
-                            <p style={{ marginTop: '10px', fontSize: '14px', color: '#4b5563' }}>
-                              {summary.summary}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* Consolidated Skill Summaries */}
+                <div style={{ marginBottom: '30px' }}>
+                  <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Skill Summaries</h4>
+                  <div style={{
+                    background: '#f8fafc',
+                    padding: '20px',
+                    borderRadius: '8px',
+                    maxHeight: '600px',
+                    overflowY: 'auto',
+                    border: '2px solid #e5e7eb'
+                  }}>
+                    {skills.length > 0 ? (
+                      skills.map((sObj: any, idx: number) => {
+                        const skillName = typeof sObj === 'string' ? sObj : sObj.skill;
+                        const summary = skillSummaries.find(s => s.skill.toLowerCase() === skillName.toLowerCase());
+                        const result = results.findLast(r => r.skill.toLowerCase() === skillName.toLowerCase());
+                        const historyItem = questionHistory.findLast(h => h.skill.toLowerCase() === skillName.toLowerCase());
 
-                {/* Aggregated Performance Summary */}
-                {(results.length > 0 || (interviewMode === 'dynamic' && questionHistory.length > 0)) && (
-                  <div style={{ marginBottom: '30px' }}>
-                    <h4 style={{ fontSize: '20px', fontWeight: '600', color: '#475569' }}>Skill Performance</h4>
-                    <div style={{
-                      background: '#f8fafc',
-                      padding: '20px',
-                      borderRadius: '8px',
-                      maxHeight: '400px',
-                      overflowY: 'auto',
-                      border: '2px solid #e5e7eb'
-                    }}>
-                      {/* Combine results and questionHistory for a unified unique skill list */}
-                      {Array.from(new Set([
-                        ...results.map(r => r.skill),
-                        ...questionHistory.map(h => h.skill)
-                      ])).filter(Boolean).map((skillName, i) => {
-                        const skillResult = results.findLast(r => r.skill === skillName);
-                        const historyItem = questionHistory.findLast(h => h.skill === skillName);
-                        // Normalization: Extract capability from wherever it lives
-                        const rawData = skillResult || (historyItem?.evaluation?.evaluation || historyItem?.evaluation);
-                        const cap = (rawData?.capability || rawData?.proficiency_level || '').toLowerCase();
+                        const hasAttempted = summary || result || historyItem;
+                        const rawData = summary || result || (historyItem?.evaluation?.evaluation || historyItem?.evaluation);
+                        const cap = hasAttempted ? (rawData?.proficiency_level || rawData?.capability || rawData?.level || '').toLowerCase() : 'not attempted';
+
+                        // Extract strengths/weaknesses from history if summary is missing
+                        const fallbackStrengths = !summary && historyItem ? (historyItem.evaluation?.evaluation?.strengths || historyItem.evaluation?.strengths || []) : [];
+                        const fallbackWeaknesses = !summary && historyItem ? (historyItem.evaluation?.evaluation?.areas_for_improvement || historyItem.evaluation?.areas_for_improvement || []) : [];
 
                         return (
-                          <div key={i} className="result-item" style={{
-                            borderLeft: `6px solid ${cap === 'expert' ? '#8b5cf6' :
-                              cap === 'strong' ? '#10b981' :
-                                cap === 'medium' ? '#f59e0b' : '#ef4444'
-                              }`
+                          <div key={idx} className="result-item" style={{
+                            borderLeft: `6px solid ${!hasAttempted ? '#94a3b8' :
+                              cap === 'expert' ? '#8b5cf6' :
+                                cap === 'advanced' ? '#3b82f6' :
+                                  cap === 'strong' || cap === 'intermediate' ? '#10b981' : '#f59e0b'
+                              }`,
+                            marginBottom: '20px',
+                            padding: '15px',
+                            background: 'white',
+                            borderRadius: '0 8px 8px 0',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
                           }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <strong style={{ fontSize: '18px' }}>{skillName}</strong>
                               <span style={{
                                 padding: '6px 16px',
-                                background: cap === 'expert' ? '#ede9fe' :
-                                  cap === 'strong' ? '#d1fae5' :
-                                    cap === 'medium' ? '#fef3c7' : '#fee2e2',
-                                color: cap === 'expert' ? '#6d28d9' :
-                                  cap === 'strong' ? '#065f46' :
-                                    cap === 'medium' ? '#92400e' : '#991b1b',
+                                background: !hasAttempted ? '#f1f5f9' :
+                                  cap === 'expert' ? '#ede9fe' :
+                                    cap === 'advanced' ? '#dbeafe' :
+                                      cap === 'strong' || cap === 'intermediate' ? '#d1fae5' : '#fef3c7',
+                                color: !hasAttempted ? '#475569' :
+                                  cap === 'expert' ? '#6d28d9' :
+                                    cap === 'advanced' ? '#1e40af' :
+                                      cap === 'strong' || cap === 'intermediate' ? '#065f46' : '#92400e',
                                 borderRadius: '6px',
                                 fontWeight: '600',
                                 fontSize: '14px'
                               }}>
-                                {(cap || 'UNKNOWN').toUpperCase()}
+                                {cap.toUpperCase()}
                               </span>
                             </div>
+
+                            {hasAttempted ? (
+                              <>
+                                {(summary || (fallbackStrengths.length > 0 || fallbackWeaknesses.length > 0)) ? (
+                                  <>
+                                    {(summary?.strengths || fallbackStrengths).length > 0 && (
+                                      <div style={{ marginTop: '10px' }}>
+                                        <span style={{ fontSize: '14px', fontWeight: '600', color: '#10b981' }}>Strengths:</span>
+                                        <ul style={{ margin: '8px 0 0 20px', fontSize: '14px', color: '#6b7280' }}>
+                                          {(summary?.strengths || fallbackStrengths).slice(0, 3).map((s: string, i: number) => (
+                                            <li key={i}>{s}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    {(summary?.weaknesses || fallbackWeaknesses).length > 0 && (
+                                      <div style={{ marginTop: '10px' }}>
+                                        <span style={{ fontSize: '14px', fontWeight: '600', color: '#ef4444' }}>Areas to Improve:</span>
+                                        <ul style={{ margin: '8px 0 0 20px', fontSize: '14px', color: '#6b7280' }}>
+                                          {(summary?.weaknesses || fallbackWeaknesses).slice(0, 3).map((s: string, i: number) => (
+                                            <li key={i}>{s}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    {(summary?.summary || rawData?.summary_feedback || rawData?.reasoning) && (
+                                      <p style={{ marginTop: '10px', fontSize: '14px', color: '#4b5563', fontStyle: 'italic' }}>
+                                        {summary?.summary || rawData?.summary_feedback || rawData?.reasoning}
+                                      </p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p style={{ marginTop: '10px', fontSize: '14px', color: '#6b7280' }}>
+                                    {result?.reasoning || (historyItem?.evaluation?.evaluation || historyItem?.evaluation)?.summary_feedback || 'No detailed summary available.'}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <p style={{ marginTop: '10px', fontSize: '14px', color: '#94a3b8', fontStyle: 'italic' }}>
+                                You did not reach this skill during the interview.
+                              </p>
+                            )}
                           </div>
                         );
-                      })}
-                    </div>
+                      })
+                    ) : (
+                      <p style={{ textAlign: 'center', color: '#64748b' }}>No skills were selected for this interview.</p>
+                    )}
                   </div>
-                )}
+                </div>
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', flexWrap: 'wrap' }}>
                   <button
@@ -2662,6 +2688,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-    </div >
+    </div>
   );
 }

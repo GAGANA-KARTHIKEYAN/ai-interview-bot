@@ -793,33 +793,4 @@ async def final_report(payload: dict):
     report = extract_json(call_llm(prompt, max_tokens=3000)) or {"overall_score": 70, "summary": "Interview complete."}
     return report
 
-@app.get("/api/history")
-async def get_history(email: str = Header(None)):
-    if not email: return {"history": []}
-    if supabase:
-        try:
-            res = supabase.table("interviews").select("*").eq("email", email).order("created_at", descending=True).execute()
-            return {"history": res.data if res.data else []}
-        except Exception as e:
-            logger.error(f"Supabase get_history failed: {e}")
-    # Local fallback
-    return {"history": []}
-
-@app.post("/api/history")
-async def save_history(payload: dict, email: str = Header(None)):
-    if not email: return {"success": False, "error": "Email required"}
-    interview_data = payload.get("interview", {})
-    if not interview_data: return {"success": False, "error": "No data"}
-    
-    interview_data["email"] = email
-    interview_data["created_at"] = datetime.now().isoformat()
-    
-    if supabase:
-        try:
-            supabase.table("interviews").insert(interview_data).execute()
-            return {"success": True}
-        except Exception as e:
-            logger.error(f"Supabase save_history failed: {e}")
-            
-    return {"success": False, "error": "Failed to save history"}
 
