@@ -16,5 +16,5 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Command to run the application
-# Use the $PORT environment variable provided by Render
-CMD uvicorn app:app --host 0.0.0.0 --port $PORT
+# Use the $PORT environment variable (provided by Render/App Runner)
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}

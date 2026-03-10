@@ -43,7 +43,7 @@ export default function Dashboard() {
   const cvFileRef = useRef<HTMLInputElement>(null);
   const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
 
-  const API_BASE = "https://ai-interview-bot-docker.onrender.com";
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://ai-interview-bot-docker.onrender.com";
   // Helper function for making API calls
   const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
     const url = process.env.NODE_ENV === 'production'
