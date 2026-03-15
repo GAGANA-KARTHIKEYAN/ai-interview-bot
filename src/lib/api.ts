@@ -7,9 +7,9 @@ interface RequestOptions extends RequestInit {
 export async function apiClient(endpoint: string, options: RequestOptions = {}) {
     const { email, headers, ...rest } = options;
 
-    const url = endpoint.startsWith("http")
-        ? endpoint
-        : `${BACKEND_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+    const baseUrl = BACKEND_URL.replace(/\/$/, "");
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const url = endpoint.startsWith("http") ? endpoint : `${baseUrl}${cleanEndpoint}`;
 
     const defaultHeaders: Record<string, string> = {};
 

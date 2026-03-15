@@ -517,52 +517,60 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
     try:
         # Extract text from PDF
         text_chunks: list[str] = []
-        with pdfplumber.open(cv.file) as pdf:
+        
+        # Seek to beginning in case it was already read
+        cv.file.seek(0)
+        content = await cv.read()
+        
+        import io
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
             for page in pdf.pages:
                 page_text = page.extract_text()
                 if page_text:
                     text_chunks.append(str(page_text))
         
-        text: str = "\n".join(text_chunks)
+        text: str = "\n".join(text_chunks).strip()
         
+        if not text:
+            logger.warning("No text extracted from PDF. Using OCR or prompt fallback.")
+            text = "NO_TEXT_EXTRACTED_FROM_PDF"
+            
         # Truncate if too long
         if len(text) > 4000:
             text = text[0:4000]
+        
         logger.info(f"Extracted {len(text)} characters from CV")
         
         prompt = f"""
-        You are an expert technical recruiter analyzing a candidate's CV for a software developer position.
+        You are an expert technical recruiter. Analyze the following candidate CV and extract their technical skills.
         
         CV CONTENT:
-        {text}
+        {text if text != "NO_TEXT_EXTRACTED_FROM_PDF" else "The CV content could not be read. Please provide generic software engineering skills."}
         
-        Based on this CV content, extract ALL technical skills mentioned:
-        - Programming languages (Python, JavaScript, Java, etc.)
-        - Frameworks (React, Django, Spring, etc.)
-        - Tools (Git, Docker, Jenkins, etc.)
-        - Databases (SQL, MongoDB, PostgreSQL, etc.)
-        - Cloud platforms (AWS, Azure, GCP, etc.)
+        Extract:
+        1. Programming languages
+        2. Frameworks
+        3. Tools
+        4. Databases
+        5. Cloud platforms
         
-        For each skill:
-        1. Identify it from the CV
-        2. Estimate experience level based on context (beginner/intermediate/advanced/expert)
-        3. Categorize it appropriately
-        4. Add 2-3 typical interview questions for this skill at the estimated level
+        For each, assign:
+        - skill: Name of skill
+        - experience_level: beginner, intermediate, advanced, or expert
+        - category: language, framework, database, tool, or other
+        - typical_questions: 2 relevant interview questions
         
-        Return ONLY a valid JSON array with this exact structure - no other text:
+        Return ONLY a JSON array. DO NOT repeat these examples if they aren't in the CV.
+        
+        Structure:
         [
-            {{
-                "skill": "Python",
-                "experience_level": "intermediate",
-                "category": "language",
-                "typical_questions": [
-                    "Explain Python decorators and when you'd use them",
-                    "How does Python handle memory management?"
-                ]
-            }}
+          {{
+            "skill": "ExampleSkill",
+            "experience_level": "intermediate",
+            "category": "language",
+            "typical_questions": ["Q1", "Q2"]
+          }}
         ]
-        
-        Include 8-15 skills. If unsure about exact level, default to "intermediate".
         """
         
         ai_response = call_llm(prompt, max_tokens=2500)
