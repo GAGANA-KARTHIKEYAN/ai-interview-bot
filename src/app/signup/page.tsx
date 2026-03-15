@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { apiClient } from '@/lib/api';
 
 export default function Signup() {
   const [name, setName] = useState('');
@@ -15,12 +16,10 @@ export default function Signup() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/auth', {
+      const data = await apiClient('/api/auth', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'signup', name, email, password })
       });
-      const data = await res.json();
       
       if (data.success) {
         router.push('/login');

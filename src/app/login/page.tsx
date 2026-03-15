@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { apiClient } from '@/lib/api';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -14,12 +15,10 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const res = await fetch('/api/auth', {
+      const data = await apiClient('/api/auth', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'login', email, password })
       });
-      const data = await res.json();
       
       if (data.success) {
         localStorage.setItem('user', JSON.stringify(data.user));

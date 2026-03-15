@@ -1,6 +1,6 @@
-'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api';
 
 export default function Dashboard() {
   // ========== USER STATE ==========
@@ -43,36 +43,15 @@ export default function Dashboard() {
   const cvFileRef = useRef<HTMLInputElement>(null);
   const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://ai-interview-bot-docker.onrender.com";
   // Helper function for making API calls
   const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
-    const url = process.env.NODE_ENV === 'production'
-      ? `/api${endpoint}`  // Use relative path in production
-      : `${API_BASE}/api${endpoint}`;  // Use full URL in development
-
-    const storedUser = localStorage.getItem('user');
-    const userEmail = storedUser ? JSON.parse(storedUser).email : null;
-
-    const mergedOptions = {
-      ...options,
-      headers: {
-        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-        ...(userEmail ? { 'email': userEmail } : {}),
-        ...options.headers,
-      }
-    };
-
-    console.log(`🌐 API Call: ${url}`, mergedOptions.method || 'GET');
-    if (mergedOptions.headers) console.log(`📋 Headers:`, { ...mergedOptions.headers });
-    return fetch(url, mergedOptions);
-  }, [BACKEND, API_BASE]);
+    return apiClient(`/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`, options);
+  }, []);
 
   // Debug logging
   useEffect(() => {
     console.log('🔧 Environment:', process.env.NODE_ENV);
-    console.log('🔧 API_BASE from env:', process.env.NEXT_PUBLIC_API_URL);
-    console.log('🔧 Final API_BASE:', API_BASE);
-    console.log('🔧 Test URL:', `${API_BASE}/api/health`);
+    console.log('🔧 BACKEND_URL from env:', process.env.NEXT_PUBLIC_BACKEND_URL);
   }, []);
   // ========== VOICE SYNTHESIS ============
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
@@ -109,26 +88,16 @@ export default function Dashboard() {
   // Debug logging for API configuration
   useEffect(() => {
     console.log('🔧 Environment:', process.env.NODE_ENV);
-    console.log('🔧 API Base:', API_BASE);
     console.log('🔧 Production Mode:', process.env.NODE_ENV === 'production');
-    console.log('🔧 Sample API URL (health):',
-      process.env.NODE_ENV === 'production'
-        ? '/api/health'
-        : `${API_BASE}/api/health`
-    );
   }, []);
 
   // ========== PROFILE FUNCTIONS ==========
   const refreshProfile = useCallback(() => {
     if (!user?.email) return;
-    fetch('/api/profile', {
+    apiClient('/api/profile', {
       headers: { 'email': user.email },
       cache: 'no-store'
     })
-      .then(res => {
-        if (!res.ok) throw new Error('Profile fetch failed');
-        return res.json();
-      })
       .then(setProfile)
       .catch(err => {
         console.error('Profile refresh failed:', err);
@@ -163,11 +132,10 @@ export default function Dashboard() {
     // Fetch profile and history from backend
     // Use parsedUser.email directly because setUser is async
     if (parsedUser.email) {
-      fetch(`/api/profile`, {
+      apiClient(`/api/profile`, {
         headers: { 'email': parsedUser.email },
         cache: 'no-store'
       })
-        .then(res => res.json())
         .then(setProfile)
         .catch(console.error);
 

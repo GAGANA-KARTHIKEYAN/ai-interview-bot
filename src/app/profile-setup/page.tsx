@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api";
 
 export default function ProfileSetup() {
   const router = useRouter();
@@ -31,9 +32,8 @@ export default function ProfileSetup() {
     }
 
     try {
-      const res = await fetch("/api/profile", {
+      const data = await apiClient("/api/profile", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
           name,
@@ -41,13 +41,6 @@ export default function ProfileSetup() {
           role,
         }),
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setMessage(data.error || "Failed to save profile");
-        return;
-      }
 
       setMessage("✅ Profile saved successfully");
 
