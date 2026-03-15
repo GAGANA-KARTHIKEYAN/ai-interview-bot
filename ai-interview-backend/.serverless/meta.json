@@ -113,7 +113,7 @@
               "Properties": {
                 "Code": {
                   "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-                  "S3Key": "serverless/ai-interview-backend/dev/1773576268803-2026-03-15T12:04:28.803Z/ai-interview-backend.zip"
+                  "S3Key": "serverless/ai-interview-backend/dev/1773581736263-2026-03-15T13:35:36.263Z/ai-interview-backend.zip"
                 },
                 "Handler": "app.handler",
                 "Runtime": "python3.11",
@@ -140,14 +140,14 @@
                 "ApiLogGroup"
               ]
             },
-            "ApiLambdaVersionH2dZrS3NBHEWuxo3RfuOn5uxp9DISaiA46Tavh6A": {
+            "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk": {
               "Type": "AWS::Lambda::Version",
               "DeletionPolicy": "Retain",
               "Properties": {
                 "FunctionName": {
                   "Ref": "ApiLambdaFunction"
                 },
-                "CodeSha256": "DGHd70rXNCR7om3Nns6qTBf+oyKNLtiGe+3A5WKWMts="
+                "CodeSha256": "rXHaz4hUePLKHRTURiUp74zp+04i32qDiZAKWrP1AdY="
               }
             },
             "ApiGatewayRestApi": {
@@ -365,7 +365,7 @@
                 "ApiLambdaPermissionApiGateway"
               ]
             },
-            "ApiGatewayDeployment1773576133565": {
+            "ApiGatewayDeployment1773581702702": {
               "Type": "AWS::ApiGateway::Deployment",
               "Properties": {
                 "RestApiId": {
@@ -428,7 +428,7 @@
             "ApiLambdaFunctionQualifiedArn": {
               "Description": "Current Lambda function version",
               "Value": {
-                "Ref": "ApiLambdaVersionH2dZrS3NBHEWuxo3RfuOn5uxp9DISaiA46Tavh6A"
+                "Ref": "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk"
               },
               "Export": {
                 "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
@@ -523,7 +523,7 @@
           "timeout": 30,
           "runtime": "python3.11",
           "vpc": {},
-          "versionLogicalId": "ApiLambdaVersionH2dZrS3NBHEWuxo3RfuOn5uxp9DISaiA46Tavh6A"
+          "versionLogicalId": "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk"
         }
       },
       "plugins": [
@@ -544,7 +544,7 @@
         "artifactsS3KeyDirname": "serverless/ai-interview-backend/dev/code-artifacts",
         "deploymentBucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
         "artifact": "C:\\Users\\gagan\\Downloads\\ai-interview-bot\\ai-interview-backend\\.serverless\\ai-interview-backend.zip",
-        "artifactDirectoryName": "serverless/ai-interview-backend/dev/1773576268803-2026-03-15T12:04:28.803Z"
+        "artifactDirectoryName": "serverless/ai-interview-backend/dev/1773581736263-2026-03-15T13:35:36.263Z"
       }
     },
     "provider": {
@@ -655,7 +655,7 @@
             "Properties": {
               "Code": {
                 "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-                "S3Key": "serverless/ai-interview-backend/dev/1773576268803-2026-03-15T12:04:28.803Z/ai-interview-backend.zip"
+                "S3Key": "serverless/ai-interview-backend/dev/1773581736263-2026-03-15T13:35:36.263Z/ai-interview-backend.zip"
               },
               "Handler": "app.handler",
               "Runtime": "python3.11",
@@ -682,14 +682,14 @@
               "ApiLogGroup"
             ]
           },
-          "ApiLambdaVersionH2dZrS3NBHEWuxo3RfuOn5uxp9DISaiA46Tavh6A": {
+          "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk": {
             "Type": "AWS::Lambda::Version",
             "DeletionPolicy": "Retain",
             "Properties": {
               "FunctionName": {
                 "Ref": "ApiLambdaFunction"
               },
-              "CodeSha256": "DGHd70rXNCR7om3Nns6qTBf+oyKNLtiGe+3A5WKWMts="
+              "CodeSha256": "rXHaz4hUePLKHRTURiUp74zp+04i32qDiZAKWrP1AdY="
             }
           },
           "ApiGatewayRestApi": {
@@ -907,7 +907,7 @@
               "ApiLambdaPermissionApiGateway"
             ]
           },
-          "ApiGatewayDeployment1773576133565": {
+          "ApiGatewayDeployment1773581702702": {
             "Type": "AWS::ApiGateway::Deployment",
             "Properties": {
               "RestApiId": {
@@ -970,7 +970,7 @@
           "ApiLambdaFunctionQualifiedArn": {
             "Description": "Current Lambda function version",
             "Value": {
-              "Ref": "ApiLambdaVersionH2dZrS3NBHEWuxo3RfuOn5uxp9DISaiA46Tavh6A"
+              "Ref": "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk"
             },
             "Export": {
               "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
@@ -1028,12 +1028,12 @@
     "serviceProviderAwsCfStackName": "ai-interview-backend-dev",
     "serviceProviderAwsCfStackId": "arn:aws:cloudformation:us-east-1:639935287796:stack/ai-interview-backend-dev/e6f4baa0-2065-11f1-8a43-128a5d24423d",
     "serviceProviderAwsCfStackCreated": "2026-03-15T11:55:46.494Z",
-    "serviceProviderAwsCfStackUpdated": null,
-    "serviceProviderAwsCfStackStatus": "CREATE_COMPLETE",
+    "serviceProviderAwsCfStackUpdated": "2026-03-15T12:05:38.554Z",
+    "serviceProviderAwsCfStackStatus": "UPDATE_COMPLETE",
     "serviceProviderAwsCfStackOutputs": [
       {
         "OutputKey": "ApiLambdaFunctionQualifiedArn",
-        "OutputValue": "arn:aws:lambda:us-east-1:639935287796:function:ai-interview-backend-dev-api:1",
+        "OutputValue": "arn:aws:lambda:us-east-1:639935287796:function:ai-interview-backend-dev-api:2",
         "Description": "Current Lambda function version",
         "ExportName": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
       },
@@ -1142,7 +1142,7 @@
           "Properties": {
             "Code": {
               "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-              "S3Key": "serverless/ai-interview-backend/dev/1773576268803-2026-03-15T12:04:28.803Z/ai-interview-backend.zip"
+              "S3Key": "serverless/ai-interview-backend/dev/1773581736263-2026-03-15T13:35:36.263Z/ai-interview-backend.zip"
             },
             "Handler": "app.handler",
             "Runtime": "python3.11",
@@ -1169,14 +1169,14 @@
             "ApiLogGroup"
           ]
         },
-        "ApiLambdaVersionH2dZrS3NBHEWuxo3RfuOn5uxp9DISaiA46Tavh6A": {
+        "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk": {
           "Type": "AWS::Lambda::Version",
           "DeletionPolicy": "Retain",
           "Properties": {
             "FunctionName": {
               "Ref": "ApiLambdaFunction"
             },
-            "CodeSha256": "DGHd70rXNCR7om3Nns6qTBf+oyKNLtiGe+3A5WKWMts="
+            "CodeSha256": "rXHaz4hUePLKHRTURiUp74zp+04i32qDiZAKWrP1AdY="
           }
         },
         "ApiGatewayRestApi": {
@@ -1394,7 +1394,7 @@
             "ApiLambdaPermissionApiGateway"
           ]
         },
-        "ApiGatewayDeployment1773576133565": {
+        "ApiGatewayDeployment1773581702702": {
           "Type": "AWS::ApiGateway::Deployment",
           "Properties": {
             "RestApiId": {
@@ -1457,7 +1457,7 @@
         "ApiLambdaFunctionQualifiedArn": {
           "Description": "Current Lambda function version",
           "Value": {
-            "Ref": "ApiLambdaVersionH2dZrS3NBHEWuxo3RfuOn5uxp9DISaiA46Tavh6A"
+            "Ref": "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk"
           },
           "Export": {
             "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"

@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 from pydantic import BaseModel
 import sys
+from supabase import create_client, Client
 
 # DEBUG: Print environment info for Lambda logs
 print(f"Python version: {sys.version}")
@@ -40,10 +41,24 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ========== SUPABASE CONFIGURATION ==========
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = None
+
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("Supabase client initialized successfully")
+    except Exception as e:
+        print(f"Failed to initialize Supabase: {e}")
+else:
+    print("Supabase URL/Key missing. Falling back to local storage.")
 
 # Create data directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -115,6 +130,28 @@ async def auth(payload: dict):
     
     users = cast(List[Dict[str, Any]], get_users())
     
+    if supabase:
+        try:
+            if auth_type == "signup":
+                # Check if exists
+                res = supabase.table("users").select("*").eq("email", email).execute()
+                if res.data: return {"success": False, "error": "User exists"}
+                # Insert
+                new_user = {
+                    "email": email, "password": password, 
+                    "name": name or email.split("@")[0],
+                    "created_at": datetime.now().isoformat()
+                }
+                supabase.table("users").insert(new_user).execute()
+                return {"success": True}
+            elif auth_type == "login":
+                res = supabase.table("users").select("*").eq("email", email).eq("password", password).execute()
+                if not res.data: return {"success": False, "error": "Invalid credentials"}
+                user = res.data[0]
+                return {"success": True, "user": {"id": user.get("id"), "email": user["email"], "name": user.get("name")}}
+        except Exception as e:
+            logger.error(f"Supabase auth failed: {e}")
+
     if auth_type == "signup":
         if not email:
             return {"success": False, "error": "Email required"}
@@ -155,6 +192,14 @@ async def get_profile(email: str = Header(None)):
     if not email:
         raise HTTPException(status_code=400, detail="Email header required")
     
+    if supabase:
+        try:
+            res = supabase.table("profiles").select("*").eq("email", email).execute()
+            if res.data:
+                return res.data[0]
+        except Exception as e:
+            logger.error(f"Supabase get_profile failed: {e}")
+
     profiles = get_profiles()
     profile = next((p for p in profiles if p["email"] == email), None)
     
@@ -175,18 +220,22 @@ async def update_profile(payload: dict):
     profile_data = payload.copy()
     profile_data["updatedAt"] = datetime.now().isoformat()
     
-    if user_idx > -1:
-        # Merge existing data (like resume path) if not provided
-        existing = profiles[user_idx]
-        for key in existing:
-            if key not in profile_data or profile_data[key] is None:
-                profile_data[key] = existing[key]
-        profiles[user_idx] = profile_data
-    else:
-        profiles.append(profile_data)
-        
-    save_profiles(profiles)
-    return {"success": True}
+    if supabase:
+        try:
+            res = supabase.table("profiles").select("*").eq("email", email).execute()
+            if res.data:
+                existing = res.data[0]
+                for key in existing:
+                    if key not in profile_data or profile_data[key] is None:
+                        profile_data[key] = existing[key]
+                supabase.table("profiles").update(profile_data).eq("email", email).execute()
+            else:
+                supabase.table("profiles").insert(profile_data).execute()
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Supabase update_profile failed: {e}")
+
+    profiles = cast(List[Dict[str, Any]], get_profiles())
 
 @app.post("/api/resume")
 async def upload_resume_profile(resume: UploadFile = File(...), email: str = Header(None)):
@@ -201,11 +250,29 @@ async def upload_resume_profile(resume: UploadFile = File(...), email: str = Hea
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(resume.file, buffer)
     
+    resume_url = f"/api/uploads/{file_name}"
+    
+    if supabase:
+        try:
+            profile_data = {
+                "email": email,
+                "resume": resume_url,
+                "parsed_resume": None,
+                "updated_at": datetime.now().isoformat()
+            }
+            res = supabase.table("profiles").select("*").eq("email", email).execute()
+            if res.data:
+                supabase.table("profiles").update(profile_data).eq("email", email).execute()
+            else:
+                supabase.table("profiles").insert(profile_data).execute()
+        except Exception as e:
+            logger.error(f"Supabase upload sync failed: {e}")
+
     # Update profile
     profiles = get_profiles()
     profile_data = {
         "email": email,
-        "resume": f"/uploads/{file_name}",
+        "resume": resume_url,
         "parsedResume": None,
         "updatedAt": datetime.now().isoformat()
     }
@@ -218,7 +285,14 @@ async def upload_resume_profile(resume: UploadFile = File(...), email: str = Hea
         
     save_profiles(profiles)
     
-    return {"success": True, "resumeUrl": profile_data["resume"]}
+    return {"success": True, "resumeUrl": resume_url}
+
+@app.get("/api/uploads/{filename}")
+async def serve_file(filename: str):
+    file_path = os.path.join(RESUMES_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404)
+    return FileResponse(file_path)
 
 @app.delete("/api/resume")
 async def delete_resume_profile(email: str = Header(None)):
@@ -402,19 +476,37 @@ async def health_check():
 async def fetch_history(email: str = Header(None)):
     if not email:
         raise HTTPException(status_code=400, detail="Email header required")
+    
+    if supabase:
+        try:
+            res = supabase.table("history").select("*").eq("email", email).order("created_at", desc=True).execute()
+            return {"history": [r["data"] for r in res.data]}
+        except Exception as e:
+            logger.error(f"Supabase history fetch failed: {e}")
+
     history_data = get_history()
     user_history = [h for h in history_data if h.get("email") == email]
     return {"history": user_history}
 
 @app.post("/api/history")
-async def add_history(payload: dict):
-    email = payload.get("email")
+async def add_history(payload: dict, email: str = Header(None)):
+    user_email = email or payload.get("email")
     interview = payload.get("interview")
-    if not email or not interview:
+    if not user_email or not interview:
         raise HTTPException(status_code=400, detail="Email and interview data required")
     
+    if supabase:
+        try:
+            supabase.table("history").insert({
+                "email": user_email,
+                "data": interview,
+                "created_at": datetime.now().isoformat()
+            }).execute()
+        except Exception as e:
+            logger.error(f"Supabase history save failed: {e}")
+
     history_data = get_history()
-    history_data.append({"email": email, **interview})
+    history_data.append({"email": user_email, **interview})
     save_history(history_data)
     return {"success": True}
 
@@ -883,35 +975,63 @@ async def next_question(payload: dict):
     }
 
 @app.post("/api/evaluate")
-async def evaluate(payload: dict):
+async def evaluate(payload: dict, email: str = Header(None)):
     """
     Comprehensive evaluation of answer with detailed feedback
     """
     question = payload.get("question", "")
     answer = payload.get("answer", "")
     skill = payload.get("skill", "")
-    input_type = payload.get("input_type", "TEXT")
+    user_email = email or payload.get("email", "unknown")
     
-    # Infer input type if passed missing from frontend but marked in text
-    if "[VIDEO RECORDING DURATION:" in answer:
-        input_type = "VIDEO"
-    elif "Voice input" in answer or "Listening..." in answer:
-        input_type = "VOICE"
-        
+    # Priority for input_type from payload
+    input_type = payload.get("input_type")
+    if not input_type:
+        input_type = "TEXT"
+        if "[VIDEO RECORDING" in answer:
+            input_type = "VIDEO"
+        elif "Voice input" in answer:
+            input_type = "VOICE"
+    
+    vision_context = ""
+    frames = payload.get("video_frames", [])
+    if input_type == "VIDEO" and frames:
+        client = get_groq_client()
+        if client:
+            try:
+                content: list[dict[str, Any]] = [{"type": "text", "text": "Analyze these video frames from an interview. 1. Is the candidate's face clearly visible? 2. Are they making good eye contact with the camera, or looking away? 3. Is the camera covered/blank? Keep it under 30 words focusing strictly on these behavioral aspects."}]
+                for f in frames:
+                    content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{f}"}})
+                v_resp = client.chat.completions.create(
+                    model="llama-3.2-11b-vision-preview",
+                    messages=[{"role": "user", "content": content}],
+                    temperature=0.3,
+                    max_tokens=200
+                )
+                vision_context = f"\nBEHAVIORAL VIDEO ANALYSIS:\n{v_resp.choices[0].message.content.strip()}\n"
+            except Exception as e:
+                logger.error(f"Vision AI error: {e}")
+                vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: Processing error.\n"
+        else:
+            vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: Vision AI not configured.\n"
+    elif input_type == "VIDEO":
+        vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: No frames provided.\n"
+
     prompt = f"""
     You're a technical interviewer evaluating a candidate's answer.
     
-    CONTEXT: {input_type} input | SKILL: {skill} | ANSWER: "{answer}"
+    CONTEXT: {input_type} | SKILL: {skill} | ANSWER: "{answer}"
     Question: {question}
+    {vision_context}
     
-    RULES - Score ONLY applicable metrics based on the input type:
-    - If TEXT input: Score Technical + Confidence only. Use "N/A" for Communication and Behavioral.
-    - If VOICE input: Score Technical + Communication + Confidence. Use "N/A" for Behavioral.
-    - If VIDEO input: Score All 4 metrics (Technical, Confidence, Communication, Behavioral).
+    RULES - Score ONLY applicable metrics:
+    - If TEXT input: Score Technical + Confidence only. Others at 0.
+    - If VOICE input: Score Technical + Communication + Confidence. Behavioral at 0.
+    - If VIDEO input: Score All 4. 
+    - If BEHAVIORAL ANALYSIS says face missing/covered, penalize Behavioral score severely (0-2).
     
-    For inapplicable metrics, use "N/A" (or 0 for numeric scores if strictly required, but write "N/A" in explanations).
-    
-    Evaluate this answer and provide comprehensive feedback. Be extremely detailed.
+    - HESITATION: If transcript has repeats or '...', set 'hesitation_markers' to true.
+    - OVERALL SCORE: Mathematical average of active scores.
     
     Return ONLY this JSON:
     {{
@@ -919,45 +1039,25 @@ async def evaluate(payload: dict):
             "capability": "weak/medium/strong/expert",
             "confidence": "low/medium/high",
             "technical_accuracy": {{
-                "correct_concepts": ["concept1", "concept2"],
-                "missed_concepts": ["concept1", "concept2"],
-                "misunderstood_concepts": ["concept1", "concept2"]
+                "correct_concepts": [], "missed_concepts": [], "misunderstood_concepts": []
             }},
             "gaps_identified": {{
-                "knowledge_gaps": ["specific gap 1", "specific gap 2"],
-                "depth_gaps": ["should have explained X", "missed Y"],
-                "example_gaps": "Didn't provide concrete examples"
+                "knowledge_gaps": [], "depth_gaps": [], "example_gaps": ""
             }},
             "experience_indicators": {{
-                "had_real_examples": true/false,
-                "discussed_challenges": true/false,
-                "example_quality": "poor/good/excellent",
-                "star_method_used": true/false
+                "had_real_examples": bool, "discussed_challenges": bool, "example_quality": "string", "star_method_used": bool
             }},
             "communication": {{
-                "clarity": "low/medium/high",
-                "structure": "poor/good/excellent",
-                "hesitation_markers": true/false,
-                "pacing": "too_fast/balanced/slow",
-                "filler_words": true/false
+                "clarity": "string", "structure": "string", "hesitation_markers": bool, "pacing": "string", "filler_words": bool
             }},
-            "strengths": ["strength1", "strength2", "strength3"],
-            "areas_for_improvement": ["area1", "area2", "area3"],
-            "ideal_answer": "Provide a comprehensive model answer that would be considered excellent. Include key technical points, structure, and depth expected.",
+            "strengths": [], "areas_for_improvement": [], "ideal_answer": "string",
             "scores": {{
-                "technical_score": 0-10,
-                "confidence_score": 0-10,
-                "communication_score": 0-10,
-                "behavioral_score": 0-10,
-                "overall_score": 0-10
+                "technical_score": 0-10, "confidence_score": 0-10, "communication_score": 0-10, "behavioral_score": 0-10, "overall_score": 0-10
             }},
             "score_explanations": {{
-                "technical_explanation": "Why this technical score was given",
-                "confidence_explanation": "Analysis of confidence markers",
-                "communication_explanation": "Why this communication score",
-                "behavioral_explanation": "Explanation of behavioral score"
+                "technical_explanation": "...", "confidence_explanation": "...", "communication_explanation": "...", "behavioral_explanation": "..."
             }},
-            "summary_feedback": "2-3 sentence summary for the candidate"
+            "summary_feedback": "..."
         }}
     }}
     """

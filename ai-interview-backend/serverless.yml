@@ -9,6 +9,8 @@ provider:
   memorySize: 512
   environment:
     GROQ_API_KEY: ${env:GROQ_API_KEY}
+    SUPABASE_URL: ${env:SUPABASE_URL}
+    SUPABASE_KEY: ${env:SUPABASE_KEY}
     DATA_DIR: /tmp/data
     RESUMES_DIR: /tmp/data/resumes
     PROFILES_FILE: /tmp/data/profiles.json
