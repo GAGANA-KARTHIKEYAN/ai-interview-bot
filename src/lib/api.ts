@@ -11,9 +11,12 @@ export async function apiClient(endpoint: string, options: RequestOptions = {}) 
         ? endpoint
         : `${BACKEND_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
-    const defaultHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-    };
+    const defaultHeaders: Record<string, string> = {};
+
+    // Don't set Content-Type if body is FormData (browser will set it with boundary)
+    if (!(rest.body instanceof FormData)) {
+        defaultHeaders["Content-Type"] = "application/json";
+    }
 
     if (email) {
         defaultHeaders["email"] = email;

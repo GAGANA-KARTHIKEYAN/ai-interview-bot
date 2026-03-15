@@ -47,10 +47,15 @@ app.add_middleware(
 
 # Create data directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.getenv("DATA_DIR", os.path.join(BASE_DIR, "data"))
-RESUMES_DIR = os.getenv("RESUMES_DIR", os.path.join(DATA_DIR, "resumes"))
-PROFILES_FILE = os.getenv("PROFILES_FILE", os.path.join(DATA_DIR, "profiles.json"))
-USERS_FILE = os.getenv("USERS_FILE", os.path.join(DATA_DIR, "users.json"))
+if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    DATA_DIR = "/tmp/data"
+else:
+    DATA_DIR = os.getenv("DATA_DIR", os.path.join(BASE_DIR, "data"))
+
+RESUMES_DIR = os.path.join(DATA_DIR, "resumes")
+PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 
 try:
     os.makedirs(RESUMES_DIR, exist_ok=True)
@@ -86,6 +91,20 @@ def get_users():
 def save_users(users):
     with open(USERS_FILE, 'w') as f:
         json.dump(users, f, indent=2)
+
+def get_history():
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    try:
+        with open(HISTORY_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return []
+
+def save_history(history):
+    os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+    with open(HISTORY_FILE, 'w') as f:
+        json.dump(history, f, indent=2)
 
 @app.post("/api/auth")
 async def auth(payload: dict):
@@ -375,11 +394,31 @@ def extract_json(text: str) -> dict:
 def home():
     return {"message": "AI Interview Bot API is running"}
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "message": "Backend is running"}
+
+@app.get("/api/history")
+async def fetch_history(email: str = Header(None)):
+    if not email:
+        raise HTTPException(status_code=400, detail="Email header required")
+    history_data = get_history()
+    user_history = [h for h in history_data if h.get("email") == email]
+    return {"history": user_history}
+
+@app.post("/api/history")
+async def add_history(payload: dict):
+    email = payload.get("email")
+    interview = payload.get("interview")
+    if not email or not interview:
+        raise HTTPException(status_code=400, detail="Email and interview data required")
     
-@app.post("/upload-and-analyze")
+    history_data = get_history()
+    history_data.append({"email": email, **interview})
+    save_history(history_data)
+    return {"success": True}
+
+@app.post("/api/upload-and-analyze")
 async def upload_and_analyze(cv: UploadFile = File(...)):
     """Analyze CV using AI to extract skills with experience levels"""
     
@@ -588,7 +627,7 @@ def categorize_skill(skill: str) -> str:
         return "tool"
     return "other"
 
-@app.post("/start-interview")
+@app.post("/api/start-interview")
 async def start_interview(payload: dict):
     """Initialize interview with first question"""
     skills = payload.get("skills", [])
@@ -674,7 +713,7 @@ async def start_interview(payload: dict):
         "interview_state": interview_state
     }
 
-@app.post("/next-question")
+@app.post("/api/next-question")
 async def next_question(payload: dict):
     """
     Dynamically generate the next question based on answer analysis
@@ -843,7 +882,7 @@ async def next_question(payload: dict):
         "should_transition": {"transition": False, "reason": reason}
     }
 
-@app.post("/evaluate")
+@app.post("/api/evaluate")
 async def evaluate(payload: dict):
     """
     Comprehensive evaluation of answer with detailed feedback
@@ -998,7 +1037,7 @@ def generate_fallback_evaluation(answer: str) -> dict:
         "summary_feedback": f"Your answer shows {capability} understanding. Try to include more specific technical details and real-world examples."
     }
 
-@app.post("/generate-skill-summary")
+@app.post("/api/generate-skill-summary")
 async def generate_skill_summary(payload: dict):
     """Generate summary for a skill after multiple questions"""
     skill = payload.get("skill", "")
@@ -1045,7 +1084,7 @@ async def generate_skill_summary(payload: dict):
             "summary": f"Assessment completed for {skill}."
         }
 
-@app.post("/final-report")
+@app.post("/api/final-report")
 async def final_report(payload: dict):
     """Generate comprehensive final interview report"""
     skills = payload.get("skills", [])
