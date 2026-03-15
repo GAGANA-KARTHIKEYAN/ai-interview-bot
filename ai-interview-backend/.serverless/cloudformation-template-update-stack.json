@@ -91,7 +91,7 @@
       "Properties": {
         "Code": {
           "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-          "S3Key": "serverless/ai-interview-backend/dev/1773581736263-2026-03-15T13:35:36.263Z/ai-interview-backend.zip"
+          "S3Key": "serverless/ai-interview-backend/dev/1773584961622-2026-03-15T14:29:21.622Z/ai-interview-backend.zip"
         },
         "Handler": "app.handler",
         "Runtime": "python3.11",
@@ -101,6 +101,8 @@
         "Environment": {
           "Variables": {
             "GROQ_API_KEY": "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",
+            "SUPABASE_URL": "",
+            "SUPABASE_KEY": "",
             "DATA_DIR": "/tmp/data",
             "RESUMES_DIR": "/tmp/data/resumes",
             "PROFILES_FILE": "/tmp/data/profiles.json",
@@ -118,14 +120,14 @@
         "ApiLogGroup"
       ]
     },
-    "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk": {
+    "ApiLambdaVersionDKxGzFTrcPcqAgsygajeHwBeLwSTYqsQCO5WyZKjOhc": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "ApiLambdaFunction"
         },
-        "CodeSha256": "rXHaz4hUePLKHRTURiUp74zp+04i32qDiZAKWrP1AdY="
+        "CodeSha256": "EsEQvzsA6HuiE0ysoC2hwMxdk1BcNEP3xkm3IFFsw0E="
       }
     },
     "ApiGatewayRestApi": {
@@ -343,7 +345,7 @@
         "ApiLambdaPermissionApiGateway"
       ]
     },
-    "ApiGatewayDeployment1773581702702": {
+    "ApiGatewayDeployment1773584808406": {
       "Type": "AWS::ApiGateway::Deployment",
       "Properties": {
         "RestApiId": {
@@ -406,7 +408,7 @@
     "ApiLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "ApiLambdaVersionbDwHuDQvjZ218rTMsPnaHQ9EQEHHsiT6kjbuICGUk"
+        "Ref": "ApiLambdaVersionDKxGzFTrcPcqAgsygajeHwBeLwSTYqsQCO5WyZKjOhc"
       },
       "Export": {
         "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"

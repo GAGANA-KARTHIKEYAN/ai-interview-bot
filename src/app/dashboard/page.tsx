@@ -461,15 +461,12 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      const response = await apiCall('/health', {
+      await apiCall('/health', {
         method: 'GET',
         signal: AbortSignal.timeout(3000)
       });
-      if (response.ok) {
-        setBackendStatus('✓ Backend is running');
-      } else {
-        setBackendStatus('✗ Backend error');
-      }
+      // If no error thrown, backend is reachable
+      setBackendStatus('✓ Backend is running');
     } catch (err) {
       setBackendStatus('✗ Backend not running');
     }
