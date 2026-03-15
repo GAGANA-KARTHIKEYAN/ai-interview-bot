@@ -22,6 +22,8 @@ export async function apiClient(endpoint: string, options: RequestOptions = {}) 
         defaultHeaders["email"] = email;
     }
 
+    console.log(`🚀 API Call: ${options.method || 'GET'} ${url}`);
+    
     const response = await fetch(url, {
         ...rest,
         headers: {

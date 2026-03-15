@@ -13,8 +13,10 @@ from dotenv import load_dotenv
 from groq import Groq
 from typing import List, Dict, Any, Optional, cast
 import pdfplumber
+import pypdf
 from pydantic import BaseModel
 import sys
+import io
 from supabase import create_client, Client
 
 # DEBUG: Print environment info for Lambda logs
@@ -247,8 +249,14 @@ async def upload_resume_profile(resume: UploadFile = File(...), email: str = Hea
     file_name = f"{safe_email}.pdf"
     file_path = os.path.join(RESUMES_DIR, file_name)
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(resume.file, buffer)
+    try:
+        content = await resume.read()
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+        logger.info(f"Successfully saved profile resume for {email} to {file_path}")
+    except Exception as e:
+        logger.error(f"Failed to save profile resume for {email}: {e}")
+        raise HTTPException(status_code=500, detail=f"File save error: {str(e)}")
     
     resume_url = f"/api/uploads/{file_name}"
     
@@ -522,18 +530,32 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
         cv.file.seek(0)
         content = await cv.read()
         
-        import io
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text_chunks.append(str(page_text))
+        # Try pdfplumber first
+        try:
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_chunks.append(str(page_text))
+        except Exception as e:
+            logger.warning(f"pdfplumber failed: {e}")
+            
+        # Try pypdf if pdfplumber extracted nothing or failed
+        if not text_chunks:
+            try:
+                reader = pypdf.PdfReader(io.BytesIO(content))
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_chunks.append(page_text)
+            except Exception as e:
+                logger.error(f"pypdf also failed: {e}")
         
         text: str = "\n".join(text_chunks).strip()
         
         if not text:
-            logger.warning("No text extracted from PDF. Using OCR or prompt fallback.")
-            text = "NO_TEXT_EXTRACTED_FROM_PDF"
+            logger.warning("No text extracted from PDF after all attempts.")
+            return {"success": False, "error": "Could not read CV text. Please ensure the PDF is not encrypted or a scanned image."}
             
         # Truncate if too long
         if len(text) > 4000:
@@ -542,35 +564,28 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
         logger.info(f"Extracted {len(text)} characters from CV")
         
         prompt = f"""
-        You are an expert technical recruiter. Analyze the following candidate CV and extract their technical skills.
+        Analyze the following candidate CV and extract their technical skills.
         
         CV CONTENT:
-        {text if text != "NO_TEXT_EXTRACTED_FROM_PDF" else "The CV content could not be read. Please provide generic software engineering skills."}
+        {text}
         
-        Extract:
-        1. Programming languages
-        2. Frameworks
-        3. Tools
-        4. Databases
-        5. Cloud platforms
+        Identify specific skills mentioned in the CV across these categories:
+        - Programming languages
+        - Frameworks
+        - Tools
+        - Databases
+        - Cloud platforms
         
-        For each, assign:
-        - skill: Name of skill
-        - experience_level: beginner, intermediate, advanced, or expert
-        - category: language, framework, database, tool, or other
-        - typical_questions: 2 relevant interview questions
+        For each skill, determine:
+        - skill: The name of the skill
+        - experience_level: (beginner, intermediate, advanced, or expert)
+        - category: (language, framework, database, tool, or other)
+        - typical_questions: 2 technical interview questions for this skill
         
-        Return ONLY a JSON array. DO NOT repeat these examples if they aren't in the CV.
-        
-        Structure:
-        [
-          {{
-            "skill": "ExampleSkill",
-            "experience_level": "intermediate",
-            "category": "language",
-            "typical_questions": ["Q1", "Q2"]
-          }}
-        ]
+        Return ONLY a JSON array. 
+        CRITICAL: DO NOT include any skills that are NOT mentioned in the CV text. 
+        DO NOT include placeholder skills like AWS, Azure, or GCP if they are not in the text.
+        If no technical skills are found, return an empty array [].
         """
         
         ai_response = call_llm(prompt, max_tokens=2500)
