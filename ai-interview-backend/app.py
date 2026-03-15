@@ -14,6 +14,19 @@ from groq import Groq
 from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 from pydantic import BaseModel
+import sys
+
+# DEBUG: Print environment info for Lambda logs
+print(f"Python version: {sys.version}")
+print(f"Current working directory: {os.getcwd()}")
+print(f"Environment variables: {list(os.environ.keys())}")
+
+try:
+    from mangum import Mangum
+    print("Mangum imported successfully")
+except ImportError as e:
+    print(f"Failed to import Mangum: {e}")
+
 # Load environment variables
 load_dotenv()
 
@@ -34,12 +47,16 @@ app.add_middleware(
 
 # Create data directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-RESUMES_DIR = os.path.join(DATA_DIR, "resumes")
-PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
+DATA_DIR = os.getenv("DATA_DIR", os.path.join(BASE_DIR, "data"))
+RESUMES_DIR = os.getenv("RESUMES_DIR", os.path.join(DATA_DIR, "resumes"))
+PROFILES_FILE = os.getenv("PROFILES_FILE", os.path.join(DATA_DIR, "profiles.json"))
+USERS_FILE = os.getenv("USERS_FILE", os.path.join(DATA_DIR, "users.json"))
 
-os.makedirs(RESUMES_DIR, exist_ok=True)
+try:
+    os.makedirs(RESUMES_DIR, exist_ok=True)
+    print(f"Resumes directory ready at: {RESUMES_DIR}")
+except Exception as e:
+    print(f"Error creating directory: {e}")
 
 # Mount static files to serve resumes
 app.mount("/uploads", StaticFiles(directory=RESUMES_DIR), name="uploads")
@@ -1072,3 +1089,11 @@ async def final_report(payload: dict):
             "hiring_recommendation": "with_reservations",
             "summary": "Interview completed successfully."
         }
+# Add handler for AWS Lambda
+try:
+    handler = Mangum(app)
+    print("Mangum handler initialized")
+except NameError:
+    print("FastAPI app not defined, cannot init Mangum")
+except Exception as e:
+    print(f"Mangum initialization error: {e}")
