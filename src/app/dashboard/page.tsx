@@ -41,7 +41,6 @@ export default function Dashboard() {
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000";
 
   // Helper function for making API calls
   const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
