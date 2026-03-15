@@ -107,12 +107,9 @@ export default function Dashboard() {
 
   const fetchInterviewHistory = useCallback(async (email: string) => {
     try {
-      const res = await apiCall('/history');
-      if (res.ok) {
-        const data = await res.json();
-        console.log(`📜 History fetched for ${email}:`, data.history?.length || 0, "records");
-        setPreviousInterviews(data.history || []);
-      }
+      const data = await apiCall('/history');
+      console.log(`📜 History fetched for ${email}:`, data.history?.length || 0, "records");
+      setPreviousInterviews(data.history || []);
     } catch (err) {
       console.error('Failed to fetch history:', err);
       // Fallback to local if needed, but we want to move away from it
@@ -461,9 +458,9 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      await apiCall('/health', {
+      await apiClient('/api/health', {
         method: 'GET',
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(10000)
       });
       // If no error thrown, backend is reachable
       setBackendStatus('✓ Backend is running');
@@ -479,12 +476,11 @@ export default function Dashboard() {
     formData.append('resume', file);
     formData.append('email', user.email);
     try {
-      const res = await apiCall('/resume', {
+      const data = await apiCall('/resume', {
         method: 'POST',
         headers: { 'email': user.email },
         body: formData
       });
-      const data = await res.json();
       if (data.success) {
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -496,9 +492,9 @@ export default function Dashboard() {
             JSON.stringify(data.error || data.detail || 'Unknown error');
         alert('Upload failed: ' + errorMessage);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Upload error');
+      alert('Upload error: ' + err.message);
     }
     setUploading(false);
   };
@@ -506,20 +502,15 @@ export default function Dashboard() {
   const deleteResume = async () => {
     if (!user?.email || !confirm('Delete resume?')) return;
     try {
-      const res = await apiCall('/resume', {
+      await apiCall('/resume', {
         method: 'DELETE',
         headers: { 'email': user.email }
       });
-      if (res.ok) {
-        refreshProfile();
-        router.refresh();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        alert('Delete failed: ' + (data.error || data.detail || 'Unknown error'));
-      }
-    } catch (err) {
+      refreshProfile();
+      router.refresh();
+    } catch (err: any) {
       console.error(err);
-      alert('Delete error');
+      alert('Delete failed: ' + err.message);
     }
   };
 
@@ -580,19 +571,12 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const res = await apiCall('/upload-and-analyze', {
+      const data = await apiCall('/upload-and-analyze', {
         method: "POST",
         body: fd,
         signal: controller.signal
       });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const data = await res.json();
+      
       console.log("Backend response:", data);
 
       // Get skills from response and deduplicate
@@ -682,7 +666,7 @@ export default function Dashboard() {
     setDetailedFeedback(null);
 
     try {
-      const response = await apiCall('/start-interview', {
+      const data = await apiCall('/start-interview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -690,8 +674,6 @@ export default function Dashboard() {
           userLevel: 'intermediate'
         })
       });
-
-      const data = await response.json();
 
       if (data.success) {
         setInterviewSession(data.interview_state);
@@ -862,7 +844,7 @@ export default function Dashboard() {
 
     try {
       // Evaluate this answer
-      const evalResponse = await apiCall('/evaluate', {
+      const evaluation = await apiCall('/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -874,13 +856,6 @@ export default function Dashboard() {
           video_frames: videoFrames
         })
       });
-
-      if (!evalResponse.ok) {
-        throw new Error(`Evaluation HTTP error: ${evalResponse.status}`);
-      }
-
-      const evalData = await evalResponse.json();
-      const evaluation = evalData.evaluation || evalData;
 
       if (!evaluation || !evaluation.capability) {
         throw new Error("Evaluation response missing capability field");
@@ -1092,7 +1067,7 @@ export default function Dashboard() {
       const skillsRemaining = skills.slice(currentIndex + 1).map(s => s.skill);
 
       // Generate next question
-      const nextResponse = await apiCall('/next-question', {
+      const nextData = await apiCall('/next-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1103,8 +1078,6 @@ export default function Dashboard() {
           skillsRemaining: skillsRemaining
         })
       });
-
-      const nextData = await nextResponse.json();
 
       if (nextData.success) {
         setCurrentAnalysis(nextData.analysis || {});
@@ -1202,7 +1175,7 @@ export default function Dashboard() {
 
   const generateSkillSummary = async (skill: string) => {
     try {
-      const response = await apiCall('/generate-skill-summary', {
+      const summary = await apiCall('/generate-skill-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1211,8 +1184,6 @@ export default function Dashboard() {
           evaluations: questionHistory.map(h => h.evaluation)
         })
       });
-
-      const summary = await response.json();
 
       setSkillSummaries(prev => {
         const existingIdx = prev.findIndex(s => s.skill === summary.skill);
@@ -1234,7 +1205,7 @@ export default function Dashboard() {
   const generateFinalReport = async (latestSummaries?: any[]) => {
     const summariesToUse = latestSummaries || skillSummaries;
     try {
-      const response = await apiCall('/final-report', {
+      const report = await apiCall('/final-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1244,8 +1215,6 @@ export default function Dashboard() {
           skillSummaries: summariesToUse
         })
       });
-
-      const report = await response.json();
 
       // Save interview results
       saveDynamicInterviewResults(report, summariesToUse);
@@ -1282,10 +1251,8 @@ export default function Dashboard() {
     apiCall('/history', {
       method: 'POST',
       body: JSON.stringify({ interview: interviewData })
-    }).then(async (res) => {
-      if (res.ok) {
-        await fetchInterviewHistory(user.email);
-      }
+    }).then(async () => {
+      await fetchInterviewHistory(user.email);
     });
 
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
@@ -1363,7 +1330,7 @@ export default function Dashboard() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const res = await apiCall('/evaluate', {
+      const data = await apiCall('/evaluate', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1380,11 +1347,7 @@ export default function Dashboard() {
 
       clearTimeout(timeoutId);
 
-      if (!res.ok) {
-        throw new Error(`Evaluation HTTP error: ${res.status}`);
-      }
 
-      const data = await res.json();
       const e = data.evaluation || data;
 
       if (!e || !e.capability) {
@@ -1505,10 +1468,8 @@ export default function Dashboard() {
     apiCall('/history', {
       method: 'POST',
       body: JSON.stringify({ interview: interviewData })
-    }).then(async (res) => {
-      if (res.ok) {
-        await fetchInterviewHistory(user.email);
-      }
+    }).then(async () => {
+      await fetchInterviewHistory(user.email);
     });
 
     const savedInterviews = JSON.parse(localStorage.getItem(`interviews_${user.email}`) || '[]');
