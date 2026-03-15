@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/api';
+import { apiClient, BACKEND_URL } from '@/lib/api';
 
 export default function Dashboard() {
   // ========== USER STATE ==========
@@ -476,11 +476,23 @@ export default function Dashboard() {
     formData.append('resume', file);
     formData.append('email', user.email);
     try {
-      const data = await apiCall('/resume', {
+      // Use apiClient directly to ensure we control headers for file upload
+      const response = await fetch(`${BACKEND_URL}/api/resume`, {
         method: 'POST',
-        headers: { 'email': user.email },
+        headers: {
+          'email': user?.email || 'unknown',
+          // Note: browser sets Content-Type for FormData
+        },
         body: formData
       });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || errData.detail || "Upload failed");
+      }
+
+      const data = await response.json();
+      console.log("Resume upload success:", data);
       if (data.success) {
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -591,8 +603,16 @@ export default function Dashboard() {
         v.skill && a.findIndex(t => (t.skill === v.skill)) === i
       );
 
+      if (data.success === false) {
+        const errorMsg = data.error || "Unknown analysis error";
+        alert(`Analysis failed: ${errorMsg}`);
+        if (status) status.innerText = `Error: ${errorMsg}`;
+        setIsAnalyzing(false);
+        return;
+      }
+
       if (matchedSkills.length === 0) {
-        alert("No skills matched. Using default skills.");
+        alert("No skills matched. Using default skills to proceed.");
         // Use default skills
         setSkills([
           { skill: "Python", experience_level: "intermediate", category: "language", typical_questions: ["Explain Python decorators", "What are list comprehensions?"] },

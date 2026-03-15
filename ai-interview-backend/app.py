@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime
 import json
 import os
@@ -39,14 +39,39 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Add this CORS configuration
+# Add CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_process_time_header(request, call_next):
+    # Log incoming request
+    logger.info(f"Incoming request: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        # Reinforce CORS headers for everything
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "*",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
 
 # ========== SUPABASE CONFIGURATION ==========
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -249,11 +274,17 @@ async def upload_resume_profile(resume: UploadFile = File(...), email: str = Hea
     file_name = f"{safe_email}.pdf"
     file_path = os.path.join(RESUMES_DIR, file_name)
     
+    # Ensure directory exists before every save attempt to be super safe
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    
     try:
         content = await resume.read()
+        if len(content) == 0:
+            raise Exception("Uploaded file is empty")
+            
         with open(file_path, "wb") as buffer:
             buffer.write(content)
-        logger.info(f"Successfully saved profile resume for {email} to {file_path}")
+        logger.info(f"Successfully saved profile resume for {email} to {file_path} ({len(content)} bytes)")
     except Exception as e:
         logger.error(f"Failed to save profile resume for {email}: {e}")
         raise HTTPException(status_code=500, detail=f"File save error: {str(e)}")
@@ -557,35 +588,28 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
             logger.warning("No text extracted from PDF after all attempts.")
             return {"success": False, "error": "Could not read CV text. Please ensure the PDF is not encrypted or a scanned image."}
             
-        # Truncate if too long
-        if len(text) > 4000:
-            text = text[0:4000]
-        
-        logger.info(f"Extracted {len(text)} characters from CV")
-        
         prompt = f"""
-        Analyze the following candidate CV and extract their technical skills.
+        Extract technical skills from the candidate's CV.
         
         CV CONTENT:
         {text}
         
-        Identify specific skills mentioned in the CV across these categories:
-        - Programming languages
-        - Frameworks
-        - Tools
-        - Databases
-        - Cloud platforms
+        Analyze the text and identify:
+        1. Programming languages
+        2. Frameworks and Libraries
+        3. Developer Tools (Git, Docker, etc.)
+        4. Databases (SQL, NoSQL)
+        5. Cloud / Infrastructure
         
-        For each skill, determine:
-        - skill: The name of the skill
+        For each skill, provide:
+        - skill: The canonical name
         - experience_level: (beginner, intermediate, advanced, or expert)
         - category: (language, framework, database, tool, or other)
-        - typical_questions: 2 technical interview questions for this skill
+        - typical_questions: [2 interview questions]
         
-        Return ONLY a JSON array. 
-        CRITICAL: DO NOT include any skills that are NOT mentioned in the CV text. 
-        DO NOT include placeholder skills like AWS, Azure, or GCP if they are not in the text.
-        If no technical skills are found, return an empty array [].
+        Return the result as a JSON array ONLY. 
+        If no technical skills are found, try to infer the most likely skills based on project descriptions.
+        DO NOT include skills that are definitely not present.
         """
         
         ai_response = call_llm(prompt, max_tokens=2500)

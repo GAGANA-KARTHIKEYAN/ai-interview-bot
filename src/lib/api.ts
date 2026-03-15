@@ -1,4 +1,4 @@
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://wrt0xf7505.execute-api.us-east-1.amazonaws.com/dev";
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://wrt0xf7505.execute-api.us-east-1.amazonaws.com/dev";
 
 interface RequestOptions extends RequestInit {
     email?: string;
