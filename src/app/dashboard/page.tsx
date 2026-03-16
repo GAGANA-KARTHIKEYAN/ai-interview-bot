@@ -46,8 +46,12 @@ export default function Dashboard() {
 
   // Helper function for making API calls
   const apiCall = useCallback(async (endpoint: string, options: RequestInit = {}) => {
-    return apiClient(`/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`, options);
-  }, []);
+    const headers = {
+      ...(options.headers || {}),
+      'email': user?.email || ''
+    };
+    return apiClient(`/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`, { ...options, headers });
+  }, [user?.email]);
 
   // Debug logging
   useEffect(() => {
@@ -644,6 +648,21 @@ export default function Dashboard() {
 
       setInterviewStep('skills');
       if (status) status.innerText = `Found ${matchedSkills.length} skills!`;
+
+      // PERSISTENCE FIX: Save to profile immediately
+      if (user?.email) {
+        apiCall('/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profile: {
+              ...profile,
+              parsedResume: matchedSkills,
+              email: user.email
+            }
+          })
+        }).then(() => refreshProfile());
+      }
     } catch (err: any) {
       console.error("CV Analysis error:", err);
 
@@ -959,18 +978,17 @@ export default function Dashboard() {
 ║                     DETAILED FEEDBACK                     ║
 ╚══════════════════════════════════════════════════════════╝
 
-📊 SCORES
-`;
+    // Score Table (Only show metrics > 0)
+    feedback += `\n📊 SCORES\n`;
+    
+    const activeMetrics = [];
+    if (scores.technical_score > 0) activeMetrics.push(` Technical: ${scores.technical_score}/10 `);
+    if (scores.confidence_score > 0) activeMetrics.push(` Confidence: ${scores.confidence_score}/10 `);
+    if (scores.communication_score > 0) activeMetrics.push(` Communication: ${scores.communication_score}/10 `);
+    if (scores.behavioral_score > 0) activeMetrics.push(` Behavioral: ${scores.behavioral_score}/10 `);
 
-    // Score cards
-    feedback += `
-   ╔══════════════════════════════════════════════════════════╗
-   ║  Technical    │  Confidence  │  Communic.   │  Behavioral  ║
-   ║  ${scores.technical_score?.toString().padStart(2, ' ')}/10        │  ${scores.confidence_score?.toString().padStart(2, ' ')}/10        │  ${scores.communication_score?.toString().padStart(2, ' ')}/10        │  ${scores.behavioral_score?.toString().padStart(2, ' ')}/10        ║
-   ╚══════════════════════════════════════════════════════════╝
-
-   Overall Score: ${scores.overall_score}/10
-`;
+    feedback += `   ${activeMetrics.join(' | ')}\n`;
+    feedback += `\n   Overall Score: ${scores.overall_score}/10\n`;
 
     // Score explanations
     feedback += `\n📈 SCORE EXPLANATIONS\n`;

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 import sys
 import io
 from supabase import create_client, Client
+import docx
 
 # DEBUG: Print environment info for Lambda logs
 print(f"Python version: {sys.version}")
@@ -595,73 +596,97 @@ async def add_history(payload: dict, email: str = Header(None)):
     return {"success": True}
 
 @app.post("/api/upload-and-analyze")
-async def upload_and_analyze(cv: UploadFile = File(...)):
-    """Analyze CV using AI to extract skills with experience levels"""
-    
+async def upload_and_analyze(cv: UploadFile = File(None), resume: UploadFile = File(None)):
+    """Analyze CV/Resume using AI to extract skills with experience levels"""
+    file_obj = cv or resume
+    if not file_obj:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+        
     try:
-        # Extract text from PDF
-        text_chunks: list[str] = []
-        
-        # Seek to beginning in case it was already read
-        cv.file.seek(0)
-        content = await cv.read()
-        
-        logger.info(f"Received CV upload: {cv.filename}, size: {len(content)} bytes, content_type: {cv.content_type}")
+        content = await file_obj.read()
+        filename = file_obj.filename.lower()
         
         if len(content) == 0:
             return {"success": False, "error": "Empty file received. Please try uploading again."}
         
-        # Check if content might be base64-encoded by API Gateway
+        # Check if content is base64-encoded by API Gateway
         import base64
-        pdf_content = content
-        if not content[:4] == b'%PDF':
+        file_content = content
+        
+        # Helper to check if file is base64 or binary
+        is_pdf = content[:4] == b'%PDF'
+        is_docx = content[:4] == b'PK\x03\x04'
+        
+        if not (is_pdf or is_docx):
             try:
                 decoded = base64.b64decode(content)
                 if decoded[:4] == b'%PDF':
-                    logger.info("Content was base64 encoded by API Gateway, decoded successfully")
-                    pdf_content = decoded
+                    logger.info("Content was base64 encoded PDF")
+                    file_content = decoded
+                    is_pdf = True
+                elif decoded[:4] == b'PK\x03\x04':
+                    logger.info("Content was base64 encoded DOCX")
+                    file_content = decoded
+                    is_docx = True
             except Exception:
-                pass  # Not base64, use original content
+                pass  # Not base64 or failed to decode
         
-        # 1. Try pdfplumber for both text and image detection
+        text_chunks = []
         image_count = 0
-        try:
-            with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
-                for page in pdf.pages:
-                    # Extract text
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_chunks.append(str(page_text))
-                    
-                    # Count images for scanned PDF detection
-                    image_count += len(page.images)
-            
-            logger.info(f"pdfplumber extracted {len(text_chunks)} pages of text. Images: {image_count}")
-        except Exception as e:
-            logger.warning(f"pdfplumber failed: {e}")
-            
-        # 2. Try pypdf fallback if no text found yet
-        if not text_chunks:
-            try:
-                reader = pypdf.PdfReader(io.BytesIO(pdf_content))
-                for page in reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_chunks.append(page_text)
-                logger.info(f"pypdf extraction: {len(text_chunks)} chunks")
-            except Exception as e:
-                logger.error(f"pypdf failed: {e}")
         
+        if is_pdf or filename.endswith('.pdf'):
+            # 1. Try pdfplumber
+            try:
+                with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text_chunks.append(str(page_text))
+                        image_count += len(page.images)
+                logger.debug(f"pdfplumber extracted {len(text_chunks)} pages. Images: {image_count}")
+            except Exception as e:
+                logger.warning(f"pdfplumber failed: {e}")
+                
+            # 2. Try pypdf fallback
+            if not text_chunks:
+                try:
+                    reader = pypdf.PdfReader(io.BytesIO(file_content))
+                    for page in reader.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text_chunks.append(page_text)
+                except Exception as e:
+                    logger.error(f"pypdf failed: {e}")
+        
+        elif is_docx or filename.endswith('.docx'):
+            try:
+                doc = docx.Document(io.BytesIO(file_content))
+                for para in doc.paragraphs:
+                    if para.text:
+                        text_chunks.append(para.text)
+                # Also check tables
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            if cell.text:
+                                text_chunks.append(cell.text)
+                logger.info(f"docx extracted {len(text_chunks)} chunks")
+            except Exception as e:
+                logger.error(f"docx parsing failed: {e}")
+                return {"success": False, "error": f"Failed to parse Word document: {str(e)}"}
+        else:
+            return {"success": False, "error": "Unsupported file format. Please upload PDF or DOCX."}
+            
         text: str = "\n".join(text_chunks).strip()
         
         if not text:
-            logger.warning(f"No text extracted from PDF. Content starts with: {content[:20]}")
+            logger.warning(f"No text extracted. Images: {image_count}")
             if image_count > 0:
                 return {
                     "success": False, 
-                    "error": f"Scanned PDF detected ({image_count} images). This system currently only supports searchable PDF text. Please use a CV that was saved from Word/Google Docs, not a scanned image."
+                    "error": f"Scanned document detected ({image_count} images). This system needs searchable text. Please upload a CV exported from Word/Google Docs."
                 }
-            return {"success": False, "error": "Could not read CV text. Please ensure the PDF is not encrypted or a scanned image."}
+            return {"success": False, "error": "Could not read document text. Please ensure the file is not corrupted or password-protected."}
             
         prompt = f"""
         Extract technical skills from the candidate's CV.
@@ -1149,18 +1174,21 @@ async def evaluate(payload: dict, email: str = Header(None)):
     
     STRICT SCORING RULES:
     1. Score ONLY applicable metrics based on input type:
-       - If TEXT input: Score Confidence only. Technical/Communication/Behavioral are strictly 0. 
-         (Explain that we cannot evaluate technical depth/communication from simple text accurately).
-       - If VOICE input: Score Technical + Communication + Confidence. Behavioral is strictly 0.
-       - If VIDEO input: Score All 4. 
-    2. TECHNICAL EVALUATION: 
-       - If the answer is vague (e.g., "I know React well"), score < 3.
-       - If they mention relevant concepts but no details, score 4-5.
-       - Only score 8+ for specific, accurate technical demonstration.
-    3. BEHAVIORAL EVALUATION:
-       - Penalize 0 unless VIDEO frames confirm a professional presence.
-    4. OVERALL SCORE: 
-       - Mathematical average of ONLY the scored metrics (ignore metrics with 0 scores).
+       - If TEXT input: Score Technical + Confidence. (Communication/Behavioral MUST be strictly 0).
+       - If VOICE input: Score Technical + Confidence + Communication. (Behavioral MUST be strictly 0).
+       - If VIDEO input: Score All 4 (Technical, Confidence, Communication, Behavioral).
+    2. LOW QUALITY / "IDK" ANSWERS:
+       - If the answer is "i don't know", "idk", or totally irrelevant/empty, Technical score MUST be 0 or 1.
+       - NEVER give a passing score (>= 5) for "idk".
+    3. TECHNICAL EVALUATION: 
+       - If the answer is vague or generic (e.g., "I know React well"), score < 3.
+       - If they mention concepts but no details/examples, score 4-5.
+       - Score 8+ ONLY for specific, accurate technical demonstration with examples.
+    4. BEHAVIORAL EVALUATION (VIDEO ONLY):
+       - Use vision context to assess professional presence and eye contact.
+    5. OVERALL SCORE CALCULATION: 
+       - Calculate the mathematical average of ONLY the scored metrics (ignore metrics that are 0).
+       - Ensure the calculated "overall_score" is accurate in the JSON.
     
     Return ONLY this JSON:
     {{
