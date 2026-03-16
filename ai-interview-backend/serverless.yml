@@ -26,11 +26,31 @@ functions:
       - http:
           path: /
           method: any
-          cors: true
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+              - email
+            allowCredentials: false
       - http:
           path: /{proxy+}
           method: any
-          cors: true
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+              - email
+            allowCredentials: false
 
 plugins:
   - serverless-python-requirements

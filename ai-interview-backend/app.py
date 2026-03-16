@@ -1,3 +1,4 @@
+# v2.1.0 - binary media types + supabase PDF storage
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -54,11 +55,22 @@ async def add_process_time_header(request, call_next):
     # Log incoming request
     logger.info(f"Incoming request: {request.method} {request.url}")
     try:
+        # Handle OPTIONS preflight directly - before call_next
+        if request.method == "OPTIONS":
+            return JSONResponse(
+                content={},
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization, email, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent",
+                    "Access-Control-Max-Age": "86400",
+                }
+            )
         response = await call_next(request)
-        # Reinforce CORS headers for everything
+        # Reinforce CORS headers for every response
         response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, email, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent"
         return response
     except Exception as e:
         logger.error(f"Error processing request: {e}")
@@ -68,8 +80,8 @@ async def add_process_time_header(request, call_next):
             content={"success": False, "error": str(e)},
             headers={
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "*",
-                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, email, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent",
             }
         )
 
