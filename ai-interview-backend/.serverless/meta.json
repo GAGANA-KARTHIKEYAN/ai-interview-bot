@@ -12,6 +12,11 @@
         "stage": "dev",
         "timeout": 30,
         "memorySize": 512,
+        "apiGateway": {
+          "binaryMediaTypes": [
+            "*/*"
+          ]
+        },
         "environment": {
           "GROQ_API_KEY": "<REDACTED>",
           "SUPABASE_URL": "",
@@ -115,7 +120,7 @@
               "Properties": {
                 "Code": {
                   "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-                  "S3Key": "serverless/ai-interview-backend/dev/1773594447355-2026-03-15T17:07:27.355Z/ai-interview-backend.zip"
+                  "S3Key": "serverless/ai-interview-backend/dev/1773662628472-2026-03-16T12:03:48.472Z/ai-interview-backend.zip"
                 },
                 "Handler": "app.handler",
                 "Runtime": "python3.11",
@@ -144,20 +149,23 @@
                 "ApiLogGroup"
               ]
             },
-            "ApiLambdaVersionEbhXR7tIcF6nMFuCwzFJklZTqOkzMljppGjp24L83o": {
+            "ApiLambdaVersionfojvQbwFKqZV1y0k12BxOru6yVaVLI2Mu5eFjtliU4": {
               "Type": "AWS::Lambda::Version",
               "DeletionPolicy": "Retain",
               "Properties": {
                 "FunctionName": {
                   "Ref": "ApiLambdaFunction"
                 },
-                "CodeSha256": "v3djDarI4qLQsF2CsTZ4Ujk5ai/uTbevxAK9gtUR13Y="
+                "CodeSha256": "1SVtAxEfsBHFN7pijuPA6WBecmo1QdZxY2AhYnUZQPs="
               }
             },
             "ApiGatewayRestApi": {
               "Type": "AWS::ApiGateway::RestApi",
               "Properties": {
                 "Name": "dev-ai-interview-backend",
+                "BinaryMediaTypes": [
+                  "*/*"
+                ],
                 "EndpointConfiguration": {
                   "Types": [
                     "EDGE"
@@ -209,7 +217,7 @@
                       "StatusCode": "200",
                       "ResponseParameters": {
                         "method.response.header.Access-Control-Allow-Origin": "'*'",
-                        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Amzn-Trace-Id'",
+                        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,email'",
                         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,DELETE,GET,HEAD,PATCH,POST,PUT'"
                       },
                       "ResponseTemplates": {
@@ -257,7 +265,7 @@
                       "StatusCode": "200",
                       "ResponseParameters": {
                         "method.response.header.Access-Control-Allow-Origin": "'*'",
-                        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Amzn-Trace-Id'",
+                        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,email'",
                         "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,DELETE,GET,HEAD,PATCH,POST,PUT'"
                       },
                       "ResponseTemplates": {
@@ -369,7 +377,7 @@
                 "ApiLambdaPermissionApiGateway"
               ]
             },
-            "ApiGatewayDeployment1773594312469": {
+            "ApiGatewayDeployment1773662557184": {
               "Type": "AWS::ApiGateway::Deployment",
               "Properties": {
                 "RestApiId": {
@@ -432,7 +440,7 @@
             "ApiLambdaFunctionQualifiedArn": {
               "Description": "Current Lambda function version",
               "Value": {
-                "Ref": "ApiLambdaVersionEbhXR7tIcF6nMFuCwzFJklZTqOkzMljppGjp24L83o"
+                "Ref": "ApiLambdaVersionfojvQbwFKqZV1y0k12BxOru6yVaVLI2Mu5eFjtliU4"
               },
               "Export": {
                 "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
@@ -489,7 +497,7 @@
                     "X-Api-Key",
                     "X-Amz-Security-Token",
                     "X-Amz-User-Agent",
-                    "X-Amzn-Trace-Id"
+                    "email"
                   ],
                   "allowCredentials": "<REDACTED>"
                 },
@@ -513,7 +521,7 @@
                     "X-Api-Key",
                     "X-Amz-Security-Token",
                     "X-Amz-User-Agent",
-                    "X-Amzn-Trace-Id"
+                    "email"
                   ],
                   "allowCredentials": "<REDACTED>"
                 },
@@ -527,7 +535,7 @@
           "timeout": 30,
           "runtime": "python3.11",
           "vpc": {},
-          "versionLogicalId": "ApiLambdaVersionEbhXR7tIcF6nMFuCwzFJklZTqOkzMljppGjp24L83o"
+          "versionLogicalId": "ApiLambdaVersionfojvQbwFKqZV1y0k12BxOru6yVaVLI2Mu5eFjtliU4"
         }
       },
       "plugins": [
@@ -548,7 +556,7 @@
         "artifactsS3KeyDirname": "serverless/ai-interview-backend/dev/code-artifacts",
         "deploymentBucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
         "artifact": "C:\\Users\\gagan\\Downloads\\ai-interview-bot\\ai-interview-backend\\.serverless\\ai-interview-backend.zip",
-        "artifactDirectoryName": "serverless/ai-interview-backend/dev/1773594447355-2026-03-15T17:07:27.355Z"
+        "artifactDirectoryName": "serverless/ai-interview-backend/dev/1773662628472-2026-03-16T12:03:48.472Z"
       }
     },
     "provider": {
@@ -558,6 +566,11 @@
       "stage": "dev",
       "timeout": 30,
       "memorySize": 512,
+      "apiGateway": {
+        "binaryMediaTypes": [
+          "*/*"
+        ]
+      },
       "environment": {
         "GROQ_API_KEY": "<REDACTED>",
         "SUPABASE_URL": "",
@@ -661,7 +674,7 @@
             "Properties": {
               "Code": {
                 "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-                "S3Key": "serverless/ai-interview-backend/dev/1773594447355-2026-03-15T17:07:27.355Z/ai-interview-backend.zip"
+                "S3Key": "serverless/ai-interview-backend/dev/1773662628472-2026-03-16T12:03:48.472Z/ai-interview-backend.zip"
               },
               "Handler": "app.handler",
               "Runtime": "python3.11",
@@ -690,20 +703,23 @@
               "ApiLogGroup"
             ]
           },
-          "ApiLambdaVersionEbhXR7tIcF6nMFuCwzFJklZTqOkzMljppGjp24L83o": {
+          "ApiLambdaVersionfojvQbwFKqZV1y0k12BxOru6yVaVLI2Mu5eFjtliU4": {
             "Type": "AWS::Lambda::Version",
             "DeletionPolicy": "Retain",
             "Properties": {
               "FunctionName": {
                 "Ref": "ApiLambdaFunction"
               },
-              "CodeSha256": "v3djDarI4qLQsF2CsTZ4Ujk5ai/uTbevxAK9gtUR13Y="
+              "CodeSha256": "1SVtAxEfsBHFN7pijuPA6WBecmo1QdZxY2AhYnUZQPs="
             }
           },
           "ApiGatewayRestApi": {
             "Type": "AWS::ApiGateway::RestApi",
             "Properties": {
               "Name": "dev-ai-interview-backend",
+              "BinaryMediaTypes": [
+                "*/*"
+              ],
               "EndpointConfiguration": {
                 "Types": [
                   "EDGE"
@@ -755,7 +771,7 @@
                     "StatusCode": "200",
                     "ResponseParameters": {
                       "method.response.header.Access-Control-Allow-Origin": "'*'",
-                      "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Amzn-Trace-Id'",
+                      "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,email'",
                       "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,DELETE,GET,HEAD,PATCH,POST,PUT'"
                     },
                     "ResponseTemplates": {
@@ -803,7 +819,7 @@
                     "StatusCode": "200",
                     "ResponseParameters": {
                       "method.response.header.Access-Control-Allow-Origin": "'*'",
-                      "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Amzn-Trace-Id'",
+                      "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,email'",
                       "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,DELETE,GET,HEAD,PATCH,POST,PUT'"
                     },
                     "ResponseTemplates": {
@@ -915,7 +931,7 @@
               "ApiLambdaPermissionApiGateway"
             ]
           },
-          "ApiGatewayDeployment1773594312469": {
+          "ApiGatewayDeployment1773662557184": {
             "Type": "AWS::ApiGateway::Deployment",
             "Properties": {
               "RestApiId": {
@@ -978,7 +994,7 @@
           "ApiLambdaFunctionQualifiedArn": {
             "Description": "Current Lambda function version",
             "Value": {
-              "Ref": "ApiLambdaVersionEbhXR7tIcF6nMFuCwzFJklZTqOkzMljppGjp24L83o"
+              "Ref": "ApiLambdaVersionfojvQbwFKqZV1y0k12BxOru6yVaVLI2Mu5eFjtliU4"
             },
             "Export": {
               "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
@@ -1023,7 +1039,7 @@
       "serviceProvider": null,
       "instanceParameters": null
     },
-    "serviceRawFile": "service: ai-interview-backend\n\nprovider:\n  name: aws\n  runtime: python3.11\n  region: us-east-1\n  stage: dev\n  timeout: 30\n  memorySize: 512\n  environment:\n    GROQ_API_KEY: ${env:GROQ_API_KEY, ''}\n    SUPABASE_URL: ${env:SUPABASE_URL, ''}\n    SUPABASE_KEY: ${env:SUPABASE_KEY, ''}\n    DATA_DIR: /tmp/data\n    RESUMES_DIR: /tmp/data/resumes\n    PROFILES_FILE: /tmp/data/profiles.json\n    USERS_FILE: /tmp/data/users.json\n\nfunctions:\n  api:\n    handler: app.handler\n    events:\n      - http:\n          path: /\n          method: any\n          cors: true\n      - http:\n          path: /{proxy+}\n          method: any\n          cors: true\n\nplugins:\n  - serverless-python-requirements\n\ncustom:\n  pythonRequirements:\n    dockerizePip: true\n\npackage:\n  patterns:\n    - \"!venv/**\"\n    - \"!.git/**\"\n    - \"!__pycache__/**\"\n    - \"!node_modules/**\"\n",
+    "serviceRawFile": "service: ai-interview-backend\n\nprovider:\n  name: aws\n  runtime: python3.11\n  region: us-east-1\n  stage: dev\n  timeout: 30\n  memorySize: 512\n  apiGateway:\n    binaryMediaTypes:\n      - '*/*'\n  environment:\n    GROQ_API_KEY: ${env:GROQ_API_KEY, ''}\n    SUPABASE_URL: ${env:SUPABASE_URL, ''}\n    SUPABASE_KEY: ${env:SUPABASE_KEY, ''}\n    DATA_DIR: /tmp/data\n    RESUMES_DIR: /tmp/data/resumes\n    PROFILES_FILE: /tmp/data/profiles.json\n    USERS_FILE: /tmp/data/users.json\n\nfunctions:\n  api:\n    handler: app.handler\n    events:\n      - http:\n          path: /\n          method: any\n          cors:\n            origin: '*'\n            headers:\n              - Content-Type\n              - X-Amz-Date\n              - Authorization\n              - X-Api-Key\n              - X-Amz-Security-Token\n              - X-Amz-User-Agent\n              - email\n            allowCredentials: false\n      - http:\n          path: /{proxy+}\n          method: any\n          cors:\n            origin: '*'\n            headers:\n              - Content-Type\n              - X-Amz-Date\n              - Authorization\n              - X-Api-Key\n              - X-Amz-Security-Token\n              - X-Amz-User-Agent\n              - email\n            allowCredentials: false\n\nplugins:\n  - serverless-python-requirements\n\ncustom:\n  pythonRequirements:\n    dockerizePip: true\n\npackage:\n  patterns:\n    - \"!venv/**\"\n    - \"!.git/**\"\n    - \"!__pycache__/**\"\n    - \"!node_modules/**\"\n",
     "command": [
       "deploy"
     ],
@@ -1036,12 +1052,12 @@
     "serviceProviderAwsCfStackName": "ai-interview-backend-dev",
     "serviceProviderAwsCfStackId": "arn:aws:cloudformation:us-east-1:639935287796:stack/ai-interview-backend-dev/e6f4baa0-2065-11f1-8a43-128a5d24423d",
     "serviceProviderAwsCfStackCreated": "2026-03-15T11:55:46.494Z",
-    "serviceProviderAwsCfStackUpdated": "2026-03-15T16:53:29.546Z",
+    "serviceProviderAwsCfStackUpdated": "2026-03-16T02:52:38.572Z",
     "serviceProviderAwsCfStackStatus": "UPDATE_COMPLETE",
     "serviceProviderAwsCfStackOutputs": [
       {
         "OutputKey": "ApiLambdaFunctionQualifiedArn",
-        "OutputValue": "arn:aws:lambda:us-east-1:639935287796:function:ai-interview-backend-dev-api:5",
+        "OutputValue": "arn:aws:lambda:us-east-1:639935287796:function:ai-interview-backend-dev-api:10",
         "Description": "Current Lambda function version",
         "ExportName": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
       },
@@ -1150,7 +1166,7 @@
           "Properties": {
             "Code": {
               "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-              "S3Key": "serverless/ai-interview-backend/dev/1773594447355-2026-03-15T17:07:27.355Z/ai-interview-backend.zip"
+              "S3Key": "serverless/ai-interview-backend/dev/1773662628472-2026-03-16T12:03:48.472Z/ai-interview-backend.zip"
             },
             "Handler": "app.handler",
             "Runtime": "python3.11",
@@ -1179,20 +1195,23 @@
             "ApiLogGroup"
           ]
         },
-        "ApiLambdaVersionEbhXR7tIcF6nMFuCwzFJklZTqOkzMljppGjp24L83o": {
+        "ApiLambdaVersionfojvQbwFKqZV1y0k12BxOru6yVaVLI2Mu5eFjtliU4": {
           "Type": "AWS::Lambda::Version",
           "DeletionPolicy": "Retain",
           "Properties": {
             "FunctionName": {
               "Ref": "ApiLambdaFunction"
             },
-            "CodeSha256": "v3djDarI4qLQsF2CsTZ4Ujk5ai/uTbevxAK9gtUR13Y="
+            "CodeSha256": "1SVtAxEfsBHFN7pijuPA6WBecmo1QdZxY2AhYnUZQPs="
           }
         },
         "ApiGatewayRestApi": {
           "Type": "AWS::ApiGateway::RestApi",
           "Properties": {
             "Name": "dev-ai-interview-backend",
+            "BinaryMediaTypes": [
+              "*/*"
+            ],
             "EndpointConfiguration": {
               "Types": [
                 "EDGE"
@@ -1244,7 +1263,7 @@
                   "StatusCode": "200",
                   "ResponseParameters": {
                     "method.response.header.Access-Control-Allow-Origin": "'*'",
-                    "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Amzn-Trace-Id'",
+                    "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,email'",
                     "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,DELETE,GET,HEAD,PATCH,POST,PUT'"
                   },
                   "ResponseTemplates": {
@@ -1292,7 +1311,7 @@
                   "StatusCode": "200",
                   "ResponseParameters": {
                     "method.response.header.Access-Control-Allow-Origin": "'*'",
-                    "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Amzn-Trace-Id'",
+                    "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,email'",
                     "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,DELETE,GET,HEAD,PATCH,POST,PUT'"
                   },
                   "ResponseTemplates": {
@@ -1404,7 +1423,7 @@
             "ApiLambdaPermissionApiGateway"
           ]
         },
-        "ApiGatewayDeployment1773594312469": {
+        "ApiGatewayDeployment1773662557184": {
           "Type": "AWS::ApiGateway::Deployment",
           "Properties": {
             "RestApiId": {
@@ -1467,7 +1486,7 @@
         "ApiLambdaFunctionQualifiedArn": {
           "Description": "Current Lambda function version",
           "Value": {
-            "Ref": "ApiLambdaVersionEbhXR7tIcF6nMFuCwzFJklZTqOkzMljppGjp24L83o"
+            "Ref": "ApiLambdaVersionfojvQbwFKqZV1y0k12BxOru6yVaVLI2Mu5eFjtliU4"
           },
           "Export": {
             "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
