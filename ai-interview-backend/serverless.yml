@@ -7,6 +7,9 @@ provider:
   stage: dev
   timeout: 30
   memorySize: 512
+  apiGateway:
+    binaryMediaTypes:
+      - '*/*'
   environment:
     GROQ_API_KEY: ${env:GROQ_API_KEY, ''}
     SUPABASE_URL: ${env:SUPABASE_URL, ''}
