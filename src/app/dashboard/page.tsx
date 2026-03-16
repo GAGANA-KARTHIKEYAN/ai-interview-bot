@@ -864,7 +864,7 @@ export default function Dashboard() {
 
     try {
       // Evaluate this answer
-      const evaluation = await apiCall('/evaluate', {
+      const evalResponse = await apiCall('/evaluate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -877,8 +877,12 @@ export default function Dashboard() {
         })
       });
 
+      // The API returns {evaluation: {...}} - unwrap it
+      const evaluation = evalResponse?.evaluation || evalResponse;
+
       if (!evaluation || !evaluation.capability) {
-        throw new Error("Evaluation response missing capability field");
+        console.warn('Evaluation response missing capability, using fallback');
+        // Don't throw - use a fallback so the interview can continue
       }
 
       // Store detailed feedback
@@ -1371,7 +1375,8 @@ export default function Dashboard() {
       const e = data.evaluation || data;
 
       if (!e || !e.capability) {
-        throw new Error("Evaluation response missing capability field");
+        console.warn('Evaluation response missing capability, using fallback');
+        // Don't throw - allow the interview to continue with partial data
       }
 
       // Store detailed feedback

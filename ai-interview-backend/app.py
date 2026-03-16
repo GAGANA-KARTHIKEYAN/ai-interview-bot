@@ -611,31 +611,50 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
         cv.file.seek(0)
         content = await cv.read()
         
+        logger.info(f"Received CV upload: {cv.filename}, size: {len(content)} bytes, content_type: {cv.content_type}")
+        
+        if len(content) == 0:
+            return {"success": False, "error": "Empty file received. Please try uploading again."}
+        
+        # Check if content might be base64-encoded by API Gateway
+        import base64
+        pdf_content = content
+        if not content[:4] == b'%PDF':
+            try:
+                decoded = base64.b64decode(content)
+                if decoded[:4] == b'%PDF':
+                    logger.info("Content was base64 encoded by API Gateway, decoded successfully")
+                    pdf_content = decoded
+            except Exception:
+                pass  # Not base64, use original content
+        
         # Try pdfplumber first
         try:
-            with pdfplumber.open(io.BytesIO(content)) as pdf:
+            with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
                 for page in pdf.pages:
                     page_text = page.extract_text()
                     if page_text:
                         text_chunks.append(str(page_text))
+            logger.info(f"pdfplumber extracted {len(text_chunks)} pages of text")
         except Exception as e:
             logger.warning(f"pdfplumber failed: {e}")
             
         # Try pypdf if pdfplumber extracted nothing or failed
         if not text_chunks:
             try:
-                reader = pypdf.PdfReader(io.BytesIO(content))
+                reader = pypdf.PdfReader(io.BytesIO(pdf_content))
                 for page in reader.pages:
                     page_text = page.extract_text()
                     if page_text:
                         text_chunks.append(page_text)
+                logger.info(f"pypdf extracted {len(text_chunks)} pages of text")
             except Exception as e:
                 logger.error(f"pypdf also failed: {e}")
         
         text: str = "\n".join(text_chunks).strip()
         
         if not text:
-            logger.warning("No text extracted from PDF after all attempts.")
+            logger.warning(f"No text extracted from PDF after all attempts. Content starts with: {content[:20]}")
             return {"success": False, "error": "Could not read CV text. Please ensure the PDF is not encrypted or a scanned image."}
             
         prompt = f"""
