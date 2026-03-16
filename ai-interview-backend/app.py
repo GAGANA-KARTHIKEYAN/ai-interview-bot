@@ -162,26 +162,28 @@ def save_history(history):
 
 @app.post("/api/auth")
 async def auth(payload: dict):
-    auth_type = payload.get("type")
+    auth_type = payload.get("type", "login")
     email = payload.get("email")
     password = payload.get("password")
     name = payload.get("name")
     
-    users = cast(List[Dict[str, Any]], get_users())
-    
+    if not email or not password:
+        return {"success": False, "error": "Email and password required"}
+        
     if supabase:
         try:
             if auth_type == "signup":
                 # Check if exists
                 res = supabase.table("users").select("*").eq("email", email).execute()
-                if res.data: return {"success": False, "error": "User exists"}
+                if res.data: return {"success": False, "error": "User already exists"}
                 # Insert
                 new_user = {
                     "email": email, "password": password, 
-                    "name": name or email.split("@")[0],
-                    "created_at": datetime.now().isoformat()
+                    "name": name or email.split("@")[0]
                 }
                 supabase.table("users").insert(new_user).execute()
+                # Create profile
+                supabase.table("profiles").insert({"email": email}).execute()
                 return {"success": True}
             elif auth_type == "login":
                 res = supabase.table("users").select("*").eq("email", email).eq("password", password).execute()
@@ -191,38 +193,25 @@ async def auth(payload: dict):
         except Exception as e:
             logger.error(f"Supabase auth failed: {e}")
 
+    # Fallback to local storage (for legacy or if Supabase is down)
+    users = cast(List[Dict[str, Any]], get_users())
     if auth_type == "signup":
-        if not email:
-            return {"success": False, "error": "Email required"}
-            
         if any(u["email"] == email for u in users):
-            return {"success": False, "error": "User exists"}
-        
-        email_str = cast(str, email)
+            return {"success": False, "error": "User already exists"}
         new_user = {
             "id": int(datetime.now().timestamp() * 1000),
-            "email": email_str,
+            "email": email,
             "password": password,
-            "name": name or email_str.split("@")[0],
+            "name": name or email.split("@")[0],
             "createdAt": datetime.now().isoformat()
         }
         users.append(new_user)
         save_users(users)
         return {"success": True}
-    
     elif auth_type == "login":
         user = next((u for u in users if u["email"] == email and u["password"] == password), None)
-        if not user:
-            return {"success": False, "error": "Invalid credentials"}
-        
-        return {
-            "success": True, 
-            "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "name": user.get("name")
-            }
-        }
+        if not user: return {"success": False, "error": "Invalid credentials"}
+        return {"success": True, "user": {"id": user["id"], "email": user["email"], "name": user.get("name")}}
     
     return {"success": False, "error": "Invalid type"}
 
@@ -235,7 +224,13 @@ async def get_profile(email: str = Header(None)):
         try:
             res = supabase.table("profiles").select("*").eq("email", email).execute()
             if res.data:
-                return res.data[0]
+                p = res.data[0]
+                # Map snake_case to camelCase for frontend
+                return {
+                    "email": p.get("email"),
+                    "resume": p.get("resume"),
+                    "parsedResume": p.get("parsed_resume")
+                }
         except Exception as e:
             logger.error(f"Supabase get_profile failed: {e}")
 
@@ -628,18 +623,24 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
             except Exception:
                 pass  # Not base64, use original content
         
-        # Try pdfplumber first
+        # 1. Try pdfplumber for both text and image detection
+        image_count = 0
         try:
             with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
                 for page in pdf.pages:
+                    # Extract text
                     page_text = page.extract_text()
                     if page_text:
                         text_chunks.append(str(page_text))
-            logger.info(f"pdfplumber extracted {len(text_chunks)} pages of text")
+                    
+                    # Count images for scanned PDF detection
+                    image_count += len(page.images)
+            
+            logger.info(f"pdfplumber extracted {len(text_chunks)} pages of text. Images: {image_count}")
         except Exception as e:
             logger.warning(f"pdfplumber failed: {e}")
             
-        # Try pypdf if pdfplumber extracted nothing or failed
+        # 2. Try pypdf fallback if no text found yet
         if not text_chunks:
             try:
                 reader = pypdf.PdfReader(io.BytesIO(pdf_content))
@@ -647,14 +648,19 @@ async def upload_and_analyze(cv: UploadFile = File(...)):
                     page_text = page.extract_text()
                     if page_text:
                         text_chunks.append(page_text)
-                logger.info(f"pypdf extracted {len(text_chunks)} pages of text")
+                logger.info(f"pypdf extraction: {len(text_chunks)} chunks")
             except Exception as e:
-                logger.error(f"pypdf also failed: {e}")
+                logger.error(f"pypdf failed: {e}")
         
         text: str = "\n".join(text_chunks).strip()
         
         if not text:
-            logger.warning(f"No text extracted from PDF after all attempts. Content starts with: {content[:20]}")
+            logger.warning(f"No text extracted from PDF. Content starts with: {content[:20]}")
+            if image_count > 0:
+                return {
+                    "success": False, 
+                    "error": f"Scanned PDF detected ({image_count} images). This system currently only supports searchable PDF text. Please use a CV that was saved from Word/Google Docs, not a scanned image."
+                }
             return {"success": False, "error": "Could not read CV text. Please ensure the PDF is not encrypted or a scanned image."}
             
         prompt = f"""
@@ -1135,19 +1141,26 @@ async def evaluate(payload: dict, email: str = Header(None)):
 
     prompt = f"""
     You're a technical interviewer evaluating a candidate's answer.
+    Your mission is to be a TOUGH and REALISTIC interviewer. Do NOT give high scores for generic or "fluffy" answers.
     
     CONTEXT: {input_type} | SKILL: {skill} | ANSWER: "{answer}"
     Question: {question}
     {vision_context}
     
-    RULES - Score ONLY applicable metrics:
-    - If TEXT input: Score Technical + Confidence only. Others at 0.
-    - If VOICE input: Score Technical + Communication + Confidence. Behavioral at 0.
-    - If VIDEO input: Score All 4. 
-    - If BEHAVIORAL ANALYSIS says face missing/covered, penalize Behavioral score severely (0-2).
-    
-    - HESITATION: If transcript has repeats or '...', set 'hesitation_markers' to true.
-    - OVERALL SCORE: Mathematical average of active scores.
+    STRICT SCORING RULES:
+    1. Score ONLY applicable metrics based on input type:
+       - If TEXT input: Score Confidence only. Technical/Communication/Behavioral are strictly 0. 
+         (Explain that we cannot evaluate technical depth/communication from simple text accurately).
+       - If VOICE input: Score Technical + Communication + Confidence. Behavioral is strictly 0.
+       - If VIDEO input: Score All 4. 
+    2. TECHNICAL EVALUATION: 
+       - If the answer is vague (e.g., "I know React well"), score < 3.
+       - If they mention relevant concepts but no details, score 4-5.
+       - Only score 8+ for specific, accurate technical demonstration.
+    3. BEHAVIORAL EVALUATION:
+       - Penalize 0 unless VIDEO frames confirm a professional presence.
+    4. OVERALL SCORE: 
+       - Mathematical average of ONLY the scored metrics (ignore metrics with 0 scores).
     
     Return ONLY this JSON:
     {{

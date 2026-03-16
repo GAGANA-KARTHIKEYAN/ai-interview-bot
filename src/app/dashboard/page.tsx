@@ -39,6 +39,7 @@ export default function Dashboard() {
   const [detailedFeedback, setDetailedFeedback] = useState<any>(null);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [viewedScore, setViewedScore] = useState<number | null>(null);
+  const [terminationReason, setTerminationReason] = useState<string | null>(null);
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
@@ -169,6 +170,7 @@ export default function Dashboard() {
 
           if (newCount >= 3) {
             setInterviewTerminated(true);
+            setTerminationReason("3 tab switches detected");
             setShowTabWarning(false);
             setInterviewStep('summary');
             setIsInterviewActive(false);
@@ -179,7 +181,7 @@ export default function Dashboard() {
             }
 
             // Save terminated interview
-            saveTerminatedInterview();
+            saveTerminatedInterview("Multiple tab switches detected");
 
             alert("Interview terminated due to multiple tab switches.");
 
@@ -203,8 +205,10 @@ export default function Dashboard() {
     };
   }, [isInterviewActive, interviewStep, interviewTerminated]);
 
-  const saveTerminatedInterview = () => {
+  const saveTerminatedInterview = (reason?: string) => {
     if (!user?.email) return;
+
+    const actualReason = reason || terminationReason || 'Interview ended early';
 
     const interviewData = {
       date: new Date().toISOString(),
@@ -215,7 +219,7 @@ export default function Dashboard() {
       skillSummaries: skillSummaries,
       overallScore: 0,
       terminated: true,
-      terminationReason: 'Multiple tab switches detected',
+      terminationReason: actualReason,
       totalTabSwitches: tabSwitchCount
     };
 
@@ -970,16 +974,16 @@ export default function Dashboard() {
 
     // Score explanations
     feedback += `\n📈 SCORE EXPLANATIONS\n`;
-    if (scoreExplanations.technical_explanation) {
+    if (scores.technical_score > 0 && scoreExplanations.technical_explanation) {
       feedback += `   • Technical: ${scoreExplanations.technical_explanation}\n`;
     }
-    if (scoreExplanations.confidence_explanation) {
+    if (scores.confidence_score > 0 && scoreExplanations.confidence_explanation) {
       feedback += `   • Confidence: ${scoreExplanations.confidence_explanation}\n`;
     }
-    if (scoreExplanations.communication_explanation) {
+    if (scores.communication_score > 0 && scoreExplanations.communication_explanation) {
       feedback += `   • Communication: ${scoreExplanations.communication_explanation}\n`;
     }
-    if (scoreExplanations.behavioral_explanation) {
+    if (scores.behavioral_score > 0 && scoreExplanations.behavioral_explanation) {
       feedback += `   • Behavioral: ${scoreExplanations.behavioral_explanation}\n`;
     }
 
@@ -2426,6 +2430,8 @@ export default function Dashboard() {
                   <div className="score-grid">
                     {Object.entries(detailedFeedback.scores || detailedFeedback.evaluation?.scores || {}).map(([key, value]) => {
                       if (key === 'overall_score') return null;
+                      // Skip zero scores (indicates not evaluated for this input type)
+                      if ((value as number) === 0) return null;
                       return (
                         <div key={key} className="score-item">
                           <div className="score-value">{value as number}/10</div>
@@ -2474,7 +2480,7 @@ export default function Dashboard() {
                 {/* Termination Reason */}
                 {interviewTerminated && (
                   <div className="termination-banner" style={{ marginBottom: '20px' }}>
-                    ⚠️ Terminated due to multiple tab switches (3 violations)
+                    ⚠️ {terminationReason || 'Interview was ended early'}
                   </div>
                 )}
 
@@ -2492,7 +2498,7 @@ export default function Dashboard() {
                   </h3>
                   {interviewTerminated && (
                     <p style={{ color: '#991b1b', marginTop: '10px', fontWeight: '500', fontSize: '16px' }}>
-                      Interview was terminated due to multiple tab switches
+                      {terminationReason || 'Interview terminated'}
                     </p>
                   )}
                 </div>
