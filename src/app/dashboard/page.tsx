@@ -1917,7 +1917,7 @@ export default function Dashboard() {
             {profile?.resume ? (
               <div>
                 <p style={{ color: '#059669', fontSize: '16px' }}>✓ Resume uploaded</p>
-                <a href={profile.resume} target="_blank" style={{
+                <a href={profile.resume.startsWith('http') ? profile.resume : `${BACKEND_URL}${profile.resume.startsWith('/') ? '' : '/'}${profile.resume}`} target="_blank" rel="noreferrer" style={{
                   display: 'inline-block',
                   padding: '10px 20px',
                   background: '#3b82f6',
