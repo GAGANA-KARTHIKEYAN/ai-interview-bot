@@ -110,16 +110,18 @@ export default function Dashboard() {
       });
   }, [user?.email]);
 
-  const fetchInterviewHistory = useCallback(async (email: string) => {
+  const fetchInterviewHistory = useCallback(async (emailToUse: string) => {
+    const email = emailToUse || user?.email;
+    if (!email) return;
+
     try {
-      const data = await apiCall('/history');
+      const data = await apiCall('/history', { headers: { 'email': email } });
       console.log(`📜 History fetched for ${email}:`, data.history?.length || 0, "records");
       setPreviousInterviews(data.history || []);
     } catch (err) {
       console.error('Failed to fetch history:', err);
-      // Fallback to local if needed, but we want to move away from it
     }
-  }, [apiCall]);
+  }, [apiCall, user?.email]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -141,6 +143,7 @@ export default function Dashboard() {
         .then(setProfile)
         .catch(console.error);
 
+      // Pass email directly to fetchInterviewHistory
       fetchInterviewHistory(parsedUser.email);
     }
 

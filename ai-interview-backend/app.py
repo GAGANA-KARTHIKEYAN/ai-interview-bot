@@ -249,28 +249,51 @@ async def update_profile(payload: dict):
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
     
-    profiles = cast(List[Dict[str, Any]], get_profiles())
-    user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
-    
-    profile_data = payload.copy()
-    profile_data["updatedAt"] = datetime.now().isoformat()
+    # Map camelCase from frontend to snake_case for Supabase
+    mapped_data = {
+        "email": email,
+        "resume": payload.get("resume"),
+        "parsed_resume": payload.get("parsedResume"),
+        "updated_at": datetime.now().isoformat()
+    }
     
     if supabase:
         try:
             res = supabase.table("profiles").select("*").eq("email", email).execute()
             if res.data:
+                # Merge existing data to preserve resume_base64 if not provided
                 existing = res.data[0]
-                for key in existing:
-                    if key not in profile_data or profile_data[key] is None:
-                        profile_data[key] = existing[key]
-                supabase.table("profiles").update(profile_data).eq("email", email).execute()
+                final_data = {**existing, **{k: v for k, v in mapped_data.items() if v is not None}}
+                supabase.table("profiles").update(final_data).eq("email", email).execute()
             else:
-                supabase.table("profiles").insert(profile_data).execute()
-            return {"success": True}
+                supabase.table("profiles").insert(mapped_data).execute()
+            # If we succeeded with Supabase, we can still fall back to local below for redundancy
         except Exception as e:
             logger.error(f"Supabase update_profile failed: {e}")
 
-    profiles = cast(List[Dict[str, Any]], get_profiles())
+    # Fallback to local storage
+    try:
+        profiles = cast(List[Dict[str, Any]], get_profiles())
+        user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
+        
+        local_data = {
+            "email": email,
+            "resume": payload.get("resume"),
+            "parsedResume": payload.get("parsedResume"),
+            "updatedAt": datetime.now().isoformat()
+        }
+        
+        if user_idx > -1:
+            # Merge
+            profiles[user_idx].update({k: v for k, v in local_data.items() if v is not None})
+        else:
+            profiles.append(local_data)
+        
+        save_profiles(profiles)
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Local profile update failed: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.post("/api/resume")
 async def upload_resume_profile(resume: UploadFile = File(...), email: str = Header(None)):
@@ -590,8 +613,10 @@ async def add_history(payload: dict, email: str = Header(None)):
         except Exception as e:
             logger.error(f"Supabase history save failed: {e}")
 
+    # Fallback/Redundancy to local storage
+    history_obj = {"email": user_email, "data": interview, "created_at": datetime.now().isoformat()}
     history_data = get_history()
-    history_data.append({"email": user_email, **interview})
+    history_data.append(history_obj)
     save_history(history_data)
     return {"success": True}
 
