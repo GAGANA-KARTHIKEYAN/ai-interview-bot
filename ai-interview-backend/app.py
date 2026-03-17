@@ -10,27 +10,27 @@ import re
 import shutil
 import traceback
 import logging
+import io
+import base64
+import sys
 from dotenv import load_dotenv
 from groq import Groq
 from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 import pypdf
 from pydantic import BaseModel
-import sys
-import io
 from supabase import create_client, Client
-import docx
 
-# DEBUG: Print environment info for Lambda logs
-print(f"Python version: {sys.version}")
-print(f"Current working directory: {os.getcwd()}")
-print(f"Environment variables: {list(os.environ.keys())}")
-
+# Optional imports for Lambda runtime
 try:
     from mangum import Mangum
-    print("Mangum imported successfully")
-except ImportError as e:
-    print(f"Failed to import Mangum: {e}")
+except ImportError:
+    Mangum = None
+
+try:
+    import docx
+except ImportError:
+    docx = None
 
 # Load environment variables
 load_dotenv()

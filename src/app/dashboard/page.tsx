@@ -977,6 +977,7 @@ export default function Dashboard() {
 ╔══════════════════════════════════════════════════════════╗
 ║                     DETAILED FEEDBACK                     ║
 ╚══════════════════════════════════════════════════════════╝
+`;
 
     // Score Table (Only show metrics > 0)
     feedback += `\n📊 SCORES\n`;

@@ -58,6 +58,8 @@ plugins:
 custom:
   pythonRequirements:
     dockerizePip: true
+    useDownloadCache: false
+    useStaticCache: false
 
 package:
   patterns:
