@@ -1122,7 +1122,7 @@ export default function Dashboard() {
           answer: questionHistory[questionHistory.length - 1]?.answer || '',
           question: currentQuestion,
           history: questionHistory,
-          skillsRemaining: skillsRemaining
+          skills_remaining: skillsRemaining
         })
       });
 
