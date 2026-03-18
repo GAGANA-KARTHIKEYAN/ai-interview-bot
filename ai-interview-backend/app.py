@@ -90,15 +90,18 @@ async def add_process_time_header(request, call_next):
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = None
+supabase_error = None
 
 if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("Supabase client initialized successfully")
     except Exception as e:
+        supabase_error = str(e)
         print(f"Failed to initialize Supabase: {e}")
 else:
-    print("Supabase URL/Key missing. Falling back to local storage.")
+    supabase_error = "SUPABASE_URL or SUPABASE_KEY missing"
+    print(supabase_error)
 
 # Create data directories
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -526,6 +529,7 @@ async def get_status():
         "status": "online",
         "groq_configured": bool(api_key),
         "supabase_connected": bool(supabase),
+        "supabase_error": supabase_error,
         "environment": "cloud" if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else "local",
         "data_dir_exists": os.path.exists(DATA_DIR),
         "resumes_dir_exists": os.path.exists(RESUMES_DIR),
