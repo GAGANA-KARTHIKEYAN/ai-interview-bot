@@ -469,14 +469,24 @@ export default function Dashboard() {
 
   const checkBackendStatus = async () => {
     try {
-      await apiClient('/api/health', {
+      const data = await apiClient('/api/status', {
         method: 'GET',
         signal: AbortSignal.timeout(10000)
       });
-      // If no error thrown, backend is reachable
-      setBackendStatus('✓ Backend is running');
+      
+      let statusMsg = '✓ Backend is online';
+      if (data.supabase_connected) {
+        statusMsg += ' (Database Connected)';
+      } else {
+        statusMsg += ' (⚠️ Database Disconnected)';
+        if (data.environment === 'cloud') {
+          alert("CRITICAL WARNING: The database is not connected. Your data and resumes will be LOST when you refresh or log out. Please check your Amplify Environment Variables.");
+        }
+      }
+      
+      setBackendStatus(statusMsg);
     } catch (err) {
-      setBackendStatus('✗ Backend not running');
+      setBackendStatus('✗ Backend unreachable');
     }
   };
 

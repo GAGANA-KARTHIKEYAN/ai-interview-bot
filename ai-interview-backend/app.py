@@ -193,8 +193,16 @@ async def auth(payload: dict):
                 return {"success": True, "user": {"id": user.get("id"), "email": user["email"], "name": user.get("name")}}
         except Exception as e:
             logger.error(f"Supabase auth failed: {e}")
+            return {"success": False, "error": f"Database Error: {str(e)}"}
 
-    # Fallback to local storage (for legacy or if Supabase is down)
+    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral storage
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return {
+            "success": False, 
+            "error": "CRITICAL: Database configuration missing. Please add SUPABASE_URL and SUPABASE_KEY to Amplify environment variables."
+        }
+
+    # Fallback to local storage (Only for local development)
     users = cast(List[Dict[str, Any]], get_users())
     if auth_type == "signup":
         if any(u["email"] == email for u in users):
@@ -270,6 +278,11 @@ async def update_profile(payload: dict):
             # If we succeeded with Supabase, we can still fall back to local below for redundancy
         except Exception as e:
             logger.error(f"Supabase update_profile failed: {e}")
+            return {"success": False, "error": f"Database Error: {str(e)}"}
+
+    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral profile
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return {"success": False, "error": "Database configuration missing. Profile could not be saved."}
 
     # Fallback to local storage
     try:
@@ -512,6 +525,8 @@ async def get_status():
     return {
         "status": "online",
         "groq_configured": bool(api_key),
+        "supabase_connected": bool(supabase),
+        "environment": "cloud" if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else "local",
         "data_dir_exists": os.path.exists(DATA_DIR),
         "resumes_dir_exists": os.path.exists(RESUMES_DIR),
         "timestamp": datetime.now().isoformat()
@@ -592,6 +607,10 @@ async def fetch_history(email: str = Header(None)):
         except Exception as e:
             logger.error(f"Supabase history fetch failed: {e}")
 
+    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral history
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return {"history": [], "warning": "Database disconnected. Historical data unavailable."}
+
     history_data = get_history()
     user_history = [h for h in history_data if h.get("email") == email]
     return {"history": user_history}
@@ -612,6 +631,11 @@ async def add_history(payload: dict, email: str = Header(None)):
             }).execute()
         except Exception as e:
             logger.error(f"Supabase history save failed: {e}")
+            return {"success": False, "error": f"Database Error: {str(e)}"}
+
+    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral history
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return {"success": False, "error": "Database configuration missing. Interview history could not be saved."}
 
     # Fallback/Redundancy to local storage
     history_obj = {"email": user_email, "data": interview, "created_at": datetime.now().isoformat()}
