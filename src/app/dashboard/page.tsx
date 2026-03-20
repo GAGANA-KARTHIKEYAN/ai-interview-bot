@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [viewedScore, setViewedScore] = useState<number | null>(null);
   const [terminationReason, setTerminationReason] = useState<string | null>(null);
+  const [summaryTab, setSummaryTab] = useState<'analysis' | 'transcripts'>('analysis');
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
@@ -473,7 +474,7 @@ export default function Dashboard() {
         method: 'GET',
         signal: AbortSignal.timeout(10000)
       });
-      
+
       let statusMsg = '✓ Backend is online';
       if (data.supabase_connected) {
         statusMsg += ' (Database Connected)';
@@ -483,7 +484,7 @@ export default function Dashboard() {
           alert("CRITICAL WARNING: The database is not connected. Your data and resumes will be LOST when you refresh or log out. Please check your Amplify Environment Variables.");
         }
       }
-      
+
       setBackendStatus(statusMsg);
     } catch (err) {
       setBackendStatus('✗ Backend unreachable');
@@ -609,7 +610,7 @@ export default function Dashboard() {
         body: fd,
         signal: controller.signal
       });
-      
+
       console.log("Backend response:", data);
 
       // Get skills from response and deduplicate
@@ -994,7 +995,7 @@ export default function Dashboard() {
 
     // Score Table (Only show metrics > 0)
     feedback += `\n📊 SCORES\n`;
-    
+
     const activeMetrics = [];
     if (scores.technical_score > 0) activeMetrics.push(` Technical: ${scores.technical_score}/10 `);
     if (scores.confidence_score > 0) activeMetrics.push(` Confidence: ${scores.confidence_score}/10 `);
@@ -1714,7 +1715,7 @@ export default function Dashboard() {
                 <span style={{ padding: '8px', background: 'var(--primary-100)', borderRadius: '10px', fontSize: '20px' }}>👤</span>
                 Profile Settings
               </div>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', marginBottom: '32px' }}>
                 <div className="input-group">
                   <label>Full Name</label>
@@ -1730,7 +1731,7 @@ export default function Dashboard() {
 
               <div style={{ marginTop: '24px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--gray-700)', marginBottom: '16px' }}>Resume & Documents</h3>
-                
+
                 {profile?.resume ? (
                   <div className="glass-card" style={{ padding: '24px', border: '1px solid var(--success-100)', background: 'var(--success-50)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1742,10 +1743,10 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '12px' }}>
-                        <a 
-                          href={profile.resume.startsWith('http') ? profile.resume : `${BACKEND_URL}${profile.resume.startsWith('/') ? '' : '/'}${profile.resume}`} 
-                          target="_blank" 
-                          rel="noreferrer" 
+                        <a
+                          href={profile.resume.startsWith('http') ? profile.resume : `${BACKEND_URL}${profile.resume.startsWith('/') ? '' : '/'}${profile.resume}`}
+                          target="_blank"
+                          rel="noreferrer"
                           className="btn btn-secondary btn-sm"
                           style={{ background: 'white' }}
                         >
@@ -1759,33 +1760,33 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <div>
-                    <div 
-                      className="upload-zone" 
+                    <div
+                      className="upload-zone"
                       onClick={() => fileInputRef.current?.click()}
                       style={{ borderStyle: 'dashed', borderWidth: '2px' }}
                     >
                       <div style={{ fontSize: '40px', marginBottom: '16px' }}>📤</div>
                       <h4 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px' }}>Upload Your Resume</h4>
                       <p style={{ color: 'var(--gray-500)', fontSize: '14px', marginBottom: '20px' }}>Support for PDF format up to 5MB</p>
-                      
-                      <input 
-                        ref={fileInputRef} 
-                        type="file" 
-                        accept="application/pdf" 
-                        onChange={(e) => setFile(e.target.files?.[0] || null)} 
-                        style={{ display: 'none' }} 
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(e) => setFile(e.target.files?.[0] || null)}
+                        style={{ display: 'none' }}
                       />
-                      
+
                       {file && (
                         <div className="badge badge-primary" style={{ marginBottom: '16px', padding: '8px 16px' }}>
                           Selected: {file.name}
                         </div>
                       )}
-                      
+
                       <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); uploadResume(); }} 
-                          disabled={uploading || !file} 
+                        <button
+                          onClick={(e) => { e.stopPropagation(); uploadResume(); }}
+                          disabled={uploading || !file}
                           className="btn btn-primary"
                         >
                           {uploading ? 'Processing...' : 'Complete Upload'}
@@ -1798,10 +1799,10 @@ export default function Dashboard() {
 
               {/* DASHBOARD STATISTICS & PROGRESS */}
               <div className="divider" style={{ margin: '32px 0' }} />
-              
+
               <div style={{ marginBottom: '32px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--gray-800)', marginBottom: '20px' }}>Performance Analytics</h3>
-                
+
                 <div className="stats-grid" style={{ marginBottom: '32px' }}>
                   <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
                     <div style={{ fontSize: '14px', color: 'var(--gray-500)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Sessions</div>
@@ -1810,8 +1811,8 @@ export default function Dashboard() {
                   <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
                     <div style={{ fontSize: '14px', color: 'var(--gray-500)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Average Match</div>
                     <div style={{ fontSize: '36px', fontWeight: '900', color: 'var(--primary-600)', marginTop: '8px' }}>
-                      {previousInterviews.length > 0 
-                        ? Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length) 
+                      {previousInterviews.length > 0
+                        ? Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length)
                         : 0}%
                     </div>
                   </div>
@@ -1830,14 +1831,14 @@ export default function Dashboard() {
                       <h4 style={{ fontWeight: '700', color: 'var(--gray-700)' }}>Improvement over time</h4>
                       <span className="badge badge-success">Trend: Rising</span>
                     </div>
-                    
+
                     <div style={{ height: '200px', width: '100%', position: 'relative', overflow: 'visible', padding: '10px 0' }}>
                       <svg viewBox="0 0 1000 200" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
                         {/* Grid lines */}
                         {[0, 50, 100, 150, 200].map(y => (
                           <line key={y} x1="0" y1={y} x2="1000" y2={y} stroke="var(--gray-100)" strokeWidth="1" />
                         ))}
-                        
+
                         {/* The Path */}
                         <path
                           d={`M ${previousInterviews.slice(-10).map((i, idx) => {
@@ -1852,7 +1853,7 @@ export default function Dashboard() {
                           strokeLinejoin="round"
                           style={{ filter: 'drop-shadow(0 4px 6px rgba(99, 102, 241, 0.3))' }}
                         />
-                        
+
                         {/* Points */}
                         {previousInterviews.slice(-10).map((i, idx) => {
                           const x = (idx / (Math.min(previousInterviews.length, 10) - 1)) * 1000;
@@ -1892,7 +1893,7 @@ export default function Dashboard() {
                   <p style={{ color: 'var(--gray-500)', fontSize: '18px', maxWidth: '500px', margin: '0 auto 40px', lineHeight: '1.6' }}>
                     Start a personalized AI interview session based on your profile or upload a new resume to target specific roles.
                   </p>
-                  
+
                   <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
                     <button
                       className="btn btn-primary btn-lg"
@@ -1916,14 +1917,14 @@ export default function Dashboard() {
                     <span style={{ padding: '8px', background: 'var(--primary-100)', borderRadius: '10px', fontSize: '20px' }}>📜</span>
                     Interview History
                   </div>
-                  
+
                   {previousInterviews.length > 0 ? (
                     <div style={{ display: 'grid', gap: '16px' }}>
                       {previousInterviews.slice().reverse().map((interview, idx) => {
                         const dateObj = new Date(interview.date);
                         const displayDate = dateObj.toLocaleDateString();
                         const displayTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        
+
                         return (
                           <div key={idx} className="history-card" onClick={() => viewInterviewFeedback(interview)}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
@@ -1978,7 +1979,7 @@ export default function Dashboard() {
                   Upload your resume and we'll dynamically generate relevant interview questions based on your specific experience.
                 </p>
 
-                <div 
+                <div
                   className={`upload-zone ${file ? 'has-file' : ''}`}
                   onClick={() => cvFileRef.current?.click()}
                 >
@@ -1987,7 +1988,7 @@ export default function Dashboard() {
                     {file ? file.name : 'Select Resume File'}
                   </h4>
                   <p style={{ color: 'var(--gray-500)', fontSize: '14px' }}>PDF or DOCX accepted (Max 10MB)</p>
-                  
+
                   <input
                     ref={cvFileRef}
                     type="file"
@@ -2029,7 +2030,7 @@ export default function Dashboard() {
                   Skills Found In Your CV
                 </h3>
                 <p style={{ color: 'var(--gray-500)', marginBottom: '24px' }}>We've identified the following core competencies. You'll be interviewed on these topics.</p>
-                
+
                 <div style={{
                   display: 'flex',
                   flexWrap: 'wrap',
@@ -2097,7 +2098,7 @@ export default function Dashboard() {
                     Interview Terminated - Integrity Check Failed
                   </div>
                 )}
-                
+
                 <div style={{ padding: '32px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
                     <div className="chat-bubble bot">
@@ -2145,7 +2146,7 @@ export default function Dashboard() {
                     <button className="btn btn-secondary" onClick={() => startVoiceInput()} disabled={interviewTerminated || isGeneratingNext} style={{ background: 'white' }}>
                       🎤 Voice Input
                     </button>
-                    
+
                     {!showCamera ? (
                       <button className="btn btn-secondary" onClick={() => setShowCamera(true)} disabled={interviewTerminated || isGeneratingNext} style={{ background: 'white' }}>
                         📹 Enable Camera
@@ -2157,10 +2158,10 @@ export default function Dashboard() {
                     )}
 
                     <div style={{ flex: 1 }} />
-                    
-                    <button 
-                      className="btn btn-primary" 
-                      onClick={() => submitAnswer()} 
+
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => submitAnswer()}
                       disabled={interviewTerminated || isGeneratingNext}
                       style={{ padding: '12px 32px' }}
                     >
@@ -2178,11 +2179,11 @@ export default function Dashboard() {
                   <h3 style={{ fontSize: '24px', fontWeight: '800' }}>Quick Feedback</h3>
                   <p style={{ opacity: 0.8, fontSize: '15px' }}>Topic: {skills[currentIndex]?.skill}</p>
                 </div>
-                
+
                 <div style={{ padding: '32px' }}>
-                  <div className="glass-card" style={{ 
-                    padding: '24px', 
-                    background: 'var(--gray-50)', 
+                  <div className="glass-card" style={{
+                    padding: '24px',
+                    background: 'var(--gray-50)',
                     maxHeight: '400px',
                     overflowY: 'auto',
                     marginBottom: '32px',
@@ -2221,61 +2222,113 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: '40px' }}>
-                  <h3 className="section-title">Detailed Analysis</h3>
-                  <div style={{ display: 'grid', gap: '20px', marginTop: '16px' }}>
-                    {skills.map((skillItem: any, idx: number) => {
-                      const skillName = skillItem.skill;
-                      const summaryObj = skillSummaries.find((s: any) => s.skill === skillName);
-                      const skillHistory = questionHistory.filter((q: any) => q.skill === skillName);
-                      const lastEval = skillHistory[skillHistory.length - 1]?.evaluation?.evaluation || skillHistory[skillHistory.length - 1]?.evaluation;
-                      
-                      return (
-                        <div key={idx} className="glass-card" style={{ padding: '24px', border: '1px solid var(--gray-100)', background: 'white' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                            <h4 style={{ fontWeight: '800', fontSize: '18px', color: 'var(--gray-900)' }}>{skillName}</h4>
-                            {lastEval?.scores?.overall_score && (
-                              <div className="badge badge-primary">{lastEval.scores.overall_score * 10}%</div>
+                <div style={{ display: 'flex', gap: '8px', background: 'var(--gray-100)', padding: '6px', borderRadius: 'var(--radius-lg)', marginBottom: '32px' }}>
+                  <button 
+                    onClick={() => setSummaryTab('analysis')}
+                    style={{ 
+                      flex: 1, 
+                      padding: '12px', 
+                      borderRadius: 'var(--radius-md)', 
+                      border: 'none',
+                      fontSize: '14px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      background: summaryTab === 'analysis' ? 'white' : 'transparent',
+                      color: summaryTab === 'analysis' ? 'var(--primary-600)' : 'var(--gray-500)',
+                      boxShadow: summaryTab === 'analysis' ? 'var(--shadow-sm)' : 'none'
+                    }}
+                  >
+                    Skills Analysis
+                  </button>
+                  <button 
+                    onClick={() => setSummaryTab('transcripts')}
+                    style={{ 
+                      flex: 1, 
+                      padding: '12px', 
+                      borderRadius: 'var(--radius-md)', 
+                      border: 'none',
+                      fontSize: '14px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      background: summaryTab === 'transcripts' ? 'white' : 'transparent',
+                      color: summaryTab === 'transcripts' ? 'var(--primary-600)' : 'var(--gray-500)',
+                      boxShadow: summaryTab === 'transcripts' ? 'var(--shadow-sm)' : 'none'
+                    }}
+                  >
+                    Session Transcripts
+                  </button>
+                </div>
+
+                {summaryTab === 'analysis' ? (
+                  <div className="animate-fadeIn">
+                    <h3 className="section-title">Detailed Analysis</h3>
+                    <div style={{ display: 'grid', gap: '20px', marginTop: '16px' }}>
+                      {skills.map((skillItem: any, idx: number) => {
+                        const skillName = skillItem.skill;
+                        const summaryObj = skillSummaries.find((s: any) => s.skill === skillName);
+                        const skillHistory = questionHistory.filter((q: any) => q.skill === skillName);
+                        const lastEval = skillHistory[skillHistory.length - 1]?.evaluation?.evaluation || skillHistory[skillHistory.length - 1]?.evaluation;
+                        const isAttempted = skillHistory.length > 0;
+                        
+                        return (
+                          <div key={idx} className="glass-card" style={{ padding: '24px', border: '1px solid var(--gray-100)', background: 'white', opacity: isAttempted ? 1 : 0.7 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                              <h4 style={{ fontWeight: '800', fontSize: '18px', color: isAttempted ? 'var(--gray-900)' : 'var(--gray-500)' }}>{skillName}</h4>
+                              {isAttempted ? (
+                                lastEval?.scores?.overall_score && (
+                                  <div className="badge badge-primary">{lastEval.scores.overall_score * 10}%</div>
+                                )
+                              ) : (
+                                <div className="badge" style={{ background: 'var(--gray-100)', color: 'var(--gray-500)' }}>Not Reached</div>
+                              )}
+                            </div>
+                            
+                            <div style={{ fontSize: '14px', color: isAttempted ? 'var(--gray-600)' : 'var(--gray-400)', lineHeight: '1.6', fontStyle: isAttempted ? 'normal' : 'italic' }}>
+                              {isAttempted 
+                                ? (summaryObj?.summary || lastEval?.summary_feedback || "Professional assessment completed for this skill area.")
+                                : "This skill area was not reached during this session due to early termination or session flow."}
+                            </div>
+
+                            {isAttempted && lastEval?.strengths?.length > 0 && (
+                              <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                {lastEval.strengths.slice(0, 3).map((s: string, i: number) => (
+                                  <span key={i} style={{ fontSize: '11px', background: 'var(--success-50)', color: 'var(--success-700)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                    ✓ {s}
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </div>
-                          
-                          <div style={{ fontSize: '14px', color: 'var(--gray-600)', lineHeight: '1.6' }}>
-                            {summaryObj?.summary || lastEval?.summary_feedback || "Professional assessment completed for this skill area."}
-                          </div>
-
-                          {/* Skill-specific strengths if available */}
-                          {lastEval?.strengths?.length > 0 && (
-                            <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                              {lastEval.strengths.slice(0, 3).map((s: string, i: number) => (
-                                <span key={i} style={{ fontSize: '11px', background: 'var(--success-50)', color: 'var(--success-700)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
-                                  ✓ {s}
-                                </span>
-                              ))}
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="animate-fadeIn">
+                    <h3 className="section-title">Session Transcripts</h3>
+                    <div style={{ background: 'var(--gray-50)', borderRadius: 'var(--radius-lg)', padding: '24px', marginTop: '16px' }}>
+                      {questionHistory.length > 0 ? (
+                        questionHistory.map((qa: any, idx: number) => (
+                          <div key={idx} style={{ marginBottom: idx === questionHistory.length - 1 ? 0 : '24px', paddingBottom: idx === questionHistory.length - 1 ? 0 : '24px', borderBottom: idx === questionHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
+                            <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--primary-600)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                              Question {idx + 1}: {qa.skill}
                             </div>
-                          )}
+                            <p style={{ fontWeight: '600', color: 'var(--gray-800)', marginBottom: '12px', fontSize: '15px' }}>{qa.question}</p>
+                            <div style={{ background: 'white', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--gray-200)', fontSize: '14px', color: 'var(--gray-700)' }}>
+                              <strong>Your Answer:</strong> {qa.answer}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--gray-500)' }}>
+                          No transcript available for this session.
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
                   </div>
-                </div>
-
-                {/* FULL Q&A HISTORY */}
-                <div style={{ marginTop: '40px' }}>
-                  <h3 className="section-title">Session Transcripts</h3>
-                  <div style={{ background: 'var(--gray-50)', borderRadius: 'var(--radius-lg)', padding: '24px', marginTop: '16px' }}>
-                    {questionHistory.map((qa: any, idx: number) => (
-                      <div key={idx} style={{ marginBottom: idx === questionHistory.length - 1 ? 0 : '24px', paddingBottom: idx === questionHistory.length - 1 ? 0 : '24px', borderBottom: idx === questionHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
-                        <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--primary-600)', textTransform: 'uppercase', marginBottom: '8px' }}>
-                          Question {idx + 1}: {qa.skill}
-                        </div>
-                        <p style={{ fontWeight: '600', color: 'var(--gray-800)', marginBottom: '12px', fontSize: '15px' }}>{qa.question}</p>
-                        <div style={{ background: 'white', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--gray-200)', fontSize: '14px', color: 'var(--gray-700)' }}>
-                          <strong>Your Answer:</strong> {qa.answer}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '40px' }}>
                   <button className="btn btn-secondary" onClick={() => {
