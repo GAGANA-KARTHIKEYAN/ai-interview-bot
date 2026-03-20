@@ -1795,6 +1795,85 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+
+              {/* DASHBOARD STATISTICS & PROGRESS */}
+              <div className="divider" style={{ margin: '32px 0' }} />
+              
+              <div style={{ marginBottom: '32px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--gray-800)', marginBottom: '20px' }}>Performance Analytics</h3>
+                
+                <div className="stats-grid" style={{ marginBottom: '32px' }}>
+                  <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '14px', color: 'var(--gray-500)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Sessions</div>
+                    <div style={{ fontSize: '36px', fontWeight: '900', color: 'var(--gray-900)', marginTop: '8px' }}>{previousInterviews.length}</div>
+                  </div>
+                  <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '14px', color: 'var(--gray-500)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Average Match</div>
+                    <div style={{ fontSize: '36px', fontWeight: '900', color: 'var(--primary-600)', marginTop: '8px' }}>
+                      {previousInterviews.length > 0 
+                        ? Math.round(previousInterviews.reduce((acc, i) => acc + (i.overallScore || 0), 0) / previousInterviews.length) 
+                        : 0}%
+                    </div>
+                  </div>
+                  <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '14px', color: 'var(--gray-500)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Terminated</div>
+                    <div style={{ fontSize: '36px', fontWeight: '900', color: 'var(--danger-500)', marginTop: '8px' }}>
+                      {previousInterviews.filter(i => i.terminated).length}
+                    </div>
+                  </div>
+                </div>
+
+                {/* PROGRESS GRAPH */}
+                {previousInterviews.length > 1 && (
+                  <div className="glass-card" style={{ padding: '32px', background: 'white' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                      <h4 style={{ fontWeight: '700', color: 'var(--gray-700)' }}>Improvement over time</h4>
+                      <span className="badge badge-success">Trend: Rising</span>
+                    </div>
+                    
+                    <div style={{ height: '200px', width: '100%', position: 'relative', overflow: 'visible', padding: '10px 0' }}>
+                      <svg viewBox="0 0 1000 200" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+                        {/* Grid lines */}
+                        {[0, 50, 100, 150, 200].map(y => (
+                          <line key={y} x1="0" y1={y} x2="1000" y2={y} stroke="var(--gray-100)" strokeWidth="1" />
+                        ))}
+                        
+                        {/* The Path */}
+                        <path
+                          d={`M ${previousInterviews.slice(-10).map((i, idx) => {
+                            const x = (idx / (Math.min(previousInterviews.length, 10) - 1)) * 1000;
+                            const y = 200 - ((i.overallScore || 0) * 2);
+                            return `${x},${y}`;
+                          }).join(' L ')}`}
+                          fill="none"
+                          stroke="var(--primary-500)"
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          style={{ filter: 'drop-shadow(0 4px 6px rgba(99, 102, 241, 0.3))' }}
+                        />
+                        
+                        {/* Points */}
+                        {previousInterviews.slice(-10).map((i, idx) => {
+                          const x = (idx / (Math.min(previousInterviews.length, 10) - 1)) * 1000;
+                          const y = 200 - ((i.overallScore || 0) * 2);
+                          return (
+                            <g key={idx}>
+                              <circle cx={x} cy={y} r="6" fill="white" stroke="var(--primary-600)" strokeWidth="3" />
+                              <text x={x} y={y - 15} textAnchor="middle" fontSize="10" fontWeight="800" fill="var(--gray-500)">{i.overallScore || 0}%</text>
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', fontSize: '12px', color: 'var(--gray-400)', fontWeight: '600' }}>
+                      <span>First Recorded Session</span>
+                      <span>Last 10 Sessions</span>
+                      <span>Latest Activity</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1840,29 +1919,44 @@ export default function Dashboard() {
                   
                   {previousInterviews.length > 0 ? (
                     <div style={{ display: 'grid', gap: '16px' }}>
-                      {previousInterviews.slice().reverse().map((interview, idx) => (
-                        <div key={idx} className="history-card" onClick={() => viewInterviewFeedback(interview)}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                              <p style={{ fontWeight: '700', fontSize: '16px', color: 'var(--gray-900)' }}>
-                                {interview.type === 'dynamic' ? 'Dynamic Session' : 'Standard Interview'}
-                                <span className="badge badge-info" style={{ marginLeft: '12px', fontSize: '11px' }}>
-                                  {new Date(interview.date).toLocaleDateString()}
-                                </span>
-                              </p>
-                              <p style={{ fontSize: '13px', color: 'var(--gray-500)', marginTop: '4px' }}>
-                                {interview.skills?.join(', ') || 'General Skills'}
-                              </p>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <p style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary-600)' }}>
-                                {interview.overallScore || 0}%
-                              </p>
-                              <p style={{ fontSize: '11px', color: 'var(--gray-400)', textTransform: 'uppercase', fontWeight: '600' }}>Score</p>
+                      {previousInterviews.slice().reverse().map((interview, idx) => {
+                        const dateObj = new Date(interview.date);
+                        const displayDate = dateObj.toLocaleDateString();
+                        const displayTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        
+                        return (
+                          <div key={idx} className="history-card" onClick={() => viewInterviewFeedback(interview)}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                              <div style={{ minWidth: '240px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                  <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--gray-900)' }}>
+                                    {interview.type === 'dynamic' ? '🚀 Dynamic Session' : '📋 Standard Interview'}
+                                  </span>
+                                  {interview.type === 'dynamic' && <span className="badge badge-primary" style={{ fontSize: '10px' }}>AI Adaptive</span>}
+                                  {interview.terminated && <span className="badge badge-danger" style={{ fontSize: '10px' }}>Terminated</span>}
+                                  {interview.partial && <span className="badge badge-warning" style={{ fontSize: '10px' }}>Partial</span>}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'var(--gray-500)' }}>
+                                  <span>📅 {displayDate}</span>
+                                  <span>⏰ {displayTime}</span>
+                                  {interview.totalTabSwitches > 0 && (
+                                    <span style={{ color: 'var(--danger-500)', fontWeight: '600' }}>⚠️ {interview.totalTabSwitches} Switches</span>
+                                  )}
+                                </div>
+                                <p style={{ fontSize: '13px', color: 'var(--gray-400)', marginTop: '8px' }}>
+                                  {interview.skills?.join(', ') || 'General Proficiency'}
+                                </p>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '28px', fontWeight: '900', color: interview.terminated ? 'var(--gray-400)' : 'var(--primary-600)', lineHeight: '1' }}>
+                                  {interview.overallScore || 0}%
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--gray-400)', textTransform: 'uppercase', fontWeight: '800', marginTop: '4px', letterSpacing: '0.05em' }}>Success Rate</div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="glass-card" style={{ textAlign: 'center', padding: '40px', background: 'white' }}>
@@ -2128,26 +2222,58 @@ export default function Dashboard() {
                 </div>
 
                 <div style={{ marginTop: '40px' }}>
-                  <h3 className="section-title">Topic Breakdown</h3>
-                  <div style={{ display: 'grid', gap: '16px', marginTop: '16px' }}>
-                    {(skillSummaries.length > 0 ? skillSummaries : skills).map((item: any, idx: number) => {
-                      const skillName = typeof item === 'string' ? item : item.skill;
-                      const summary = skillSummaries.find((s: any) => s.skill === skillName);
-                      const result = results.find((r: any) => r.skill === skillName);
-                      const rawData = questionHistory.find((q: any) => q.skill === skillName);
+                  <h3 className="section-title">Detailed Analysis</h3>
+                  <div style={{ display: 'grid', gap: '20px', marginTop: '16px' }}>
+                    {skills.map((skillItem: any, idx: number) => {
+                      const skillName = skillItem.skill;
+                      const summaryObj = skillSummaries.find((s: any) => s.skill === skillName);
+                      const skillHistory = questionHistory.filter((q: any) => q.skill === skillName);
+                      const lastEval = skillHistory[skillHistory.length - 1]?.evaluation?.evaluation || skillHistory[skillHistory.length - 1]?.evaluation;
                       
                       return (
-                        <div key={idx} className="glass-card" style={{ padding: '20px', border: '1px solid var(--gray-100)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h4 style={{ fontWeight: '700' }}>{skillName}</h4>
-                            {result?.scores?.overall_score && <div className="badge badge-primary">{result.scores.overall_score * 10}%</div>}
+                        <div key={idx} className="glass-card" style={{ padding: '24px', border: '1px solid var(--gray-100)', background: 'white' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <h4 style={{ fontWeight: '800', fontSize: '18px', color: 'var(--gray-900)' }}>{skillName}</h4>
+                            {lastEval?.scores?.overall_score && (
+                              <div className="badge badge-primary">{lastEval.scores.overall_score * 10}%</div>
+                            )}
                           </div>
-                          <p style={{ fontSize: '14px', color: 'var(--gray-500)', marginTop: '8px' }}>
-                            {summary?.summary || rawData?.reasoning || "Evaluation processed for this session."}
-                          </p>
+                          
+                          <div style={{ fontSize: '14px', color: 'var(--gray-600)', lineHeight: '1.6' }}>
+                            {summaryObj?.summary || lastEval?.summary_feedback || "Professional assessment completed for this skill area."}
+                          </div>
+
+                          {/* Skill-specific strengths if available */}
+                          {lastEval?.strengths?.length > 0 && (
+                            <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {lastEval.strengths.slice(0, 3).map((s: string, i: number) => (
+                                <span key={i} style={{ fontSize: '11px', background: 'var(--success-50)', color: 'var(--success-700)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                                  ✓ {s}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+
+                {/* FULL Q&A HISTORY */}
+                <div style={{ marginTop: '40px' }}>
+                  <h3 className="section-title">Session Transcripts</h3>
+                  <div style={{ background: 'var(--gray-50)', borderRadius: 'var(--radius-lg)', padding: '24px', marginTop: '16px' }}>
+                    {questionHistory.map((qa: any, idx: number) => (
+                      <div key={idx} style={{ marginBottom: idx === questionHistory.length - 1 ? 0 : '24px', paddingBottom: idx === questionHistory.length - 1 ? 0 : '24px', borderBottom: idx === questionHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
+                        <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--primary-600)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                          Question {idx + 1}: {qa.skill}
+                        </div>
+                        <p style={{ fontWeight: '600', color: 'var(--gray-800)', marginBottom: '12px', fontSize: '15px' }}>{qa.question}</p>
+                        <div style={{ background: 'white', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--gray-200)', fontSize: '14px', color: 'var(--gray-700)' }}>
+                          <strong>Your Answer:</strong> {qa.answer}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
