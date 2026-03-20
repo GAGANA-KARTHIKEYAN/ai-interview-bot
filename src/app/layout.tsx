@@ -2,8 +2,9 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "AI Interview Bot",
-  description: "AI powered interview preparation platform",
+  title: "AI Interview Bot — Smart Interview Preparation",
+  description: "Prepare smarter with AI-powered mock interviews. Get real-time feedback, dynamic questions, and detailed performance analysis.",
+  keywords: "AI interview, mock interview, interview preparation, career, resume analysis",
 };
 
 export default function RootLayout({
@@ -13,15 +14,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          fontFamily: "system-ui, -apple-system, BlinkMacSystemFont",
-          backgroundColor: "#f9fafb",
-        }}
-      >
-        {children}
-      </body>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>{children}</body>
     </html>
   );
 }

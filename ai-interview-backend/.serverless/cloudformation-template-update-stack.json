@@ -91,7 +91,7 @@
       "Properties": {
         "Code": {
           "S3Bucket": "serverless-framework-deployments-us-east-1-363e6f1c-21c1",
-          "S3Key": "serverless/ai-interview-backend/dev/1773688789566-2026-03-16T19:19:49.566Z/ai-interview-backend.zip"
+          "S3Key": "serverless/ai-interview-backend/dev/1773817664856-2026-03-18T07:07:44.856Z/ai-interview-backend.zip"
         },
         "Handler": "app.handler",
         "Runtime": "python3.11",
@@ -101,8 +101,8 @@
         "Environment": {
           "Variables": {
             "GROQ_API_KEY": "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",
-            "SUPABASE_URL": "",
-            "SUPABASE_KEY": "",
+            "SUPABASE_URL": "https://pfyjspdevbrwqwqcibhf.supabase.co",
+            "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmeWpzcGRldmJyd3F3cWNpYmhmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzc2MjE2MiwiZXhwIjoyMDg5MzM4MTYyfQ.c6Z2Q0-_nSWtfRROU4jTw_9UDXxNAYV-BI5jXjhANdc",
             "DATA_DIR": "/tmp/data",
             "RESUMES_DIR": "/tmp/data/resumes",
             "PROFILES_FILE": "/tmp/data/profiles.json",
@@ -120,14 +120,14 @@
         "ApiLogGroup"
       ]
     },
-    "ApiLambdaVersion5gnK2laIrZWhtVDCJNA7kyq4bOYCmf4kgOKv8xqg": {
+    "ApiLambdaVersionJwTWUGtUUqFvGhuXqfvoKRv34cjA1JJpduAKtJDI": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "ApiLambdaFunction"
         },
-        "CodeSha256": "8CuiFC1EDPpYCc+nz8L3EwO8khTl8QeWi1rF2TkpbWw="
+        "CodeSha256": "4U6Wo7xSF6LohGKh3PGmCRIKQV3w0SNFU0TVVDZKNXw="
       }
     },
     "ApiGatewayRestApi": {
@@ -348,7 +348,7 @@
         "ApiLambdaPermissionApiGateway"
       ]
     },
-    "ApiGatewayDeployment1773688531791": {
+    "ApiGatewayDeployment1773817478036": {
       "Type": "AWS::ApiGateway::Deployment",
       "Properties": {
         "RestApiId": {
@@ -411,7 +411,7 @@
     "ApiLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "ApiLambdaVersion5gnK2laIrZWhtVDCJNA7kyq4bOYCmf4kgOKv8xqg"
+        "Ref": "ApiLambdaVersionJwTWUGtUUqFvGhuXqfvoKRv34cjA1JJpduAKtJDI"
       },
       "Export": {
         "Name": "sls-ai-interview-backend-dev-ApiLambdaFunctionQualifiedArn"
