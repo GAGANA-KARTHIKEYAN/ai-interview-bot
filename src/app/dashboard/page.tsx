@@ -581,7 +581,7 @@ export default function Dashboard() {
     stopCamera();
     stopVideoRecording();
     stopAnswerTimer();
-    setInterviewStep('start');
+    setInterviewStep('summary');
     setIsInterviewActive(false);
     setInterviewTerminated(false);
     setTabSwitchCount(0);
@@ -1308,14 +1308,14 @@ export default function Dashboard() {
     stopCamera();
 
     const summariesToUse = latestSummaries || skillSummaries;
-    const overallScore = calculateDynamicOverallScore(questionHistory);
+    const overallScore = calculateDynamicOverallScore(allInterviewHistory.length > 0 ? allInterviewHistory : questionHistory);
 
     const interviewData = {
       date: new Date().toISOString(),
       type: 'dynamic',
       skills: skills.map(s => s.skill),
       skillDetails: skills,
-      results: allInterviewHistory.length > 0 ? allInterviewHistory : questionHistory,
+      results: allInterviewHistory,
       skillSummaries: summariesToUse,
       finalReport: finalReport,
       overallScore: overallScore,
@@ -1345,9 +1345,9 @@ export default function Dashboard() {
       type: interviewMode,
       skills: skills.map(s => s.skill),
       skillDetails: skills,
-      results: interviewMode === 'dynamic' ? questionHistory : results,
+      results: interviewMode === 'dynamic' ? allInterviewHistory : results,
       skillSummaries: skillSummaries,
-      overallScore: interviewMode === 'dynamic' ? calculateDynamicOverallScore(questionHistory) : calculateOverallScore(results),
+      overallScore: interviewMode === 'dynamic' ? calculateDynamicOverallScore(allInterviewHistory) : calculateOverallScore(results),
       partial: true,
       terminated: false,
       totalTabSwitches: tabSwitchCount
@@ -1372,9 +1372,9 @@ export default function Dashboard() {
 
     const scores = history
       .map(h => {
-        const evalData = h.evaluation?.evaluation || h.evaluation;
-        // Prefer explicit numeric scores from backend
-        return evalData?.scores?.overall_score ?? evalData?.overall_score;
+        // Deep search for overall_score
+        const s = evalData?.scores?.overall_score ?? evalData?.overall_score ?? evalData?.scores?.match_percentage ?? evalData?.match_percentage;
+        return typeof s === 'number' ? s : (typeof s === 'string' ? parseFloat(s) : null);
       })
       .filter((score): score is number => score !== null && score !== undefined);
 
@@ -1724,7 +1724,7 @@ export default function Dashboard() {
             <button
               onClick={() => {
                 setCurrentTab('interview');
-                setInterviewStep('start');
+                setInterviewStep('summary');
               }}
               className={`nav-tab ${currentTab === 'interview' ? 'active' : ''}`}
             >
@@ -2047,7 +2047,7 @@ export default function Dashboard() {
                 <div style={{ marginTop: '32px', display: 'flex', gap: '16px' }}>
                   <button
                     className="btn btn-secondary"
-                    onClick={() => setInterviewStep('start')}
+                    onClick={() => setInterviewStep('summary')}
                   >
                     Cancel
                   </button>
@@ -2217,9 +2217,20 @@ export default function Dashboard() {
                         📹 Enable Camera
                       </button>
                     ) : (
-                      <button className="btn btn-secondary" onClick={stopCamera} disabled={interviewTerminated || isGeneratingNext} style={{ background: 'white', color: 'var(--danger-600)' }}>
-                        🚫 Hide Camera
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button className="btn btn-secondary" onClick={stopCamera} disabled={interviewTerminated || isGeneratingNext} style={{ background: 'white' }}>
+                          🚫 Hide
+                        </button>
+                        {!isRecording ? (
+                          <button className="btn btn-primary" onClick={startVideoRecording} disabled={interviewTerminated || isGeneratingNext} style={{ background: 'var(--danger-600)', borderColor: 'var(--danger-600)' }}>
+                            ⏺ Record Answer
+                          </button>
+                        ) : (
+                          <button className="btn btn-primary" onClick={stopVideoRecording} style={{ background: 'var(--gray-900)' }}>
+                            ⏹ Stop Recording
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     <div style={{ flex: 1 }} />
@@ -2270,7 +2281,33 @@ export default function Dashboard() {
                           ))}
                         </div>
                         
-                        <div style={{ marginBottom: '20px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                           {detailedFeedback.communication && (
+                             <div style={{ background: 'var(--gray-50)', padding: '12px', borderRadius: '12px', border: '1px solid var(--gray-200)' }}>
+                               <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--gray-500)', textTransform: 'uppercase', marginBottom: '4px' }}>Communication Analysis</div>
+                               <div style={{ fontSize: '13px', color: 'var(--gray-700)' }}>
+                                 {detailedFeedback.communication.hesitation_markers !== undefined && (
+                                   <div>• Hesitation: {detailedFeedback.communication.hesitation_markers ? 'Detected' : 'Low'}</div>
+                                 )}
+                                 {detailedFeedback.communication.filler_words !== undefined && (
+                                   <div>• Filler Words: {detailedFeedback.communication.filler_words ? 'Frequent' : 'Minimal'}</div>
+                                 )}
+                               </div>
+                             </div>
+                           )}
+                           {(detailedFeedback.gaps_identified?.knowledge_gaps?.length > 0 || detailedFeedback.gaps_identified?.depth_gaps?.length > 0) && (
+                             <div style={{ background: 'var(--danger-50)', padding: '12px', borderRadius: '12px', border: '1px solid var(--danger-100)' }}>
+                               <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--danger-600)', textTransform: 'uppercase', marginBottom: '4px' }}>Skills Gaps</div>
+                               <div style={{ fontSize: '12px', color: 'var(--danger-800)' }}>
+                                 {(detailedFeedback.gaps_identified.knowledge_gaps || []).slice(0, 2).map((g: any, i: number) => (
+                                   <div key={i}>• {g}</div>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                        </div>
+
+                        <div style={{ marginBottom: '32px' }}>
                           <div style={{ fontWeight: '800', fontSize: '14px', color: 'var(--gray-900)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary-500)' }}></span>
                             Professional Assessment
@@ -2280,7 +2317,16 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        {detailedFeedback.ideal_answer && (
+                          <div style={{ marginBottom: '24px' }}>
+                             <div style={{ fontWeight: '800', fontSize: '12px', color: 'var(--success-700)', textTransform: 'uppercase', marginBottom: '8px' }}>Ideal Answer Guidance</div>
+                             <div style={{ fontSize: '14px', color: 'var(--gray-700)', fontStyle: 'italic', background: 'var(--success-50)', padding: '16px', borderRadius: '8px', borderLeft: '4px solid var(--success-400)' }}>
+                               {detailedFeedback.ideal_answer}
+                             </div>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                           {detailedFeedback.strengths?.length > 0 && (
                             <div>
                               <div style={{ fontWeight: '800', fontSize: '12px', color: 'var(--success-700)', textTransform: 'uppercase', marginBottom: '8px' }}>Strengths</div>
@@ -2470,7 +2516,7 @@ export default function Dashboard() {
                     <div style={{ background: 'var(--gray-50)', borderRadius: 'var(--radius-lg)', padding: '24px', marginTop: '16px' }}>
                       {allInterviewHistory.length > 0 ? (
                         allInterviewHistory.map((qa: any, idx: number) => (
-                          <div key={idx} style={{ marginBottom: idx === questionHistory.length - 1 ? 0 : '24px', paddingBottom: idx === questionHistory.length - 1 ? 0 : '24px', borderBottom: idx === questionHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
+                          <div key={idx} style={{ marginBottom: idx === allInterviewHistory.length - 1 ? 0 : '24px', paddingBottom: idx === allInterviewHistory.length - 1 ? 0 : '24px', borderBottom: idx === allInterviewHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
                             <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--primary-600)', textTransform: 'uppercase', marginBottom: '8px' }}>
                               Question {idx + 1}: {qa.skill}
                             </div>
@@ -2482,7 +2528,7 @@ export default function Dashboard() {
                         ))
                       ) : questionHistory.length > 0 ? (
                         questionHistory.map((qa: any, idx: number) => (
-                          <div key={idx} style={{ marginBottom: idx === questionHistory.length - 1 ? 0 : '24px', paddingBottom: idx === questionHistory.length - 1 ? 0 : '24px', borderBottom: idx === questionHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
+                          <div key={idx} style={{ marginBottom: idx === allInterviewHistory.length - 1 ? 0 : '24px', paddingBottom: idx === allInterviewHistory.length - 1 ? 0 : '24px', borderBottom: idx === allInterviewHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
                             <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--primary-600)', textTransform: 'uppercase', marginBottom: '8px' }}>
                               Question {idx + 1}: {qa.skill}
                             </div>
@@ -2503,7 +2549,7 @@ export default function Dashboard() {
 
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '40px' }}>
                   <button className="btn btn-secondary" onClick={() => {
-                    setInterviewStep('start');
+                    setInterviewStep('summary');
                     stopCamera();
                   }}>Back to Dashboard</button>
                   <button className="btn btn-primary" onClick={() => {
