@@ -41,6 +41,7 @@ export default function Dashboard() {
   const [viewedScore, setViewedScore] = useState<number | null>(null);
   const [terminationReason, setTerminationReason] = useState<string | null>(null);
   const [summaryTab, setSummaryTab] = useState<'analysis' | 'transcripts'>('analysis');
+  const [allInterviewHistory, setAllInterviewHistory] = useState<any[]>([]);
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
@@ -736,6 +737,7 @@ export default function Dashboard() {
         setInterviewSession(data.interview_state);
         setCurrentQuestion(data.question.question);
         setCurrentAnalysis(null);
+        setAllInterviewHistory([]);
 
         // Add to conversation flow
         setConversationFlow([{
@@ -948,6 +950,7 @@ export default function Dashboard() {
 
       const updatedHistory = [...questionHistory, newHistoryItem];
       setQuestionHistory(updatedHistory);
+      setAllInterviewHistory(prev => [...prev, newHistoryItem]);
 
       // Format feedback for display
       const formattedFeedback = formatDetailedFeedback(evaluation);
@@ -1300,7 +1303,7 @@ export default function Dashboard() {
       type: 'dynamic',
       skills: skills.map(s => s.skill),
       skillDetails: skills,
-      results: questionHistory,
+      results: allInterviewHistory.length > 0 ? allInterviewHistory : questionHistory,
       skillSummaries: summariesToUse,
       finalReport: finalReport,
       overallScore: overallScore,
@@ -1576,6 +1579,7 @@ export default function Dashboard() {
 
     if (interview.type === 'dynamic') {
       setQuestionHistory(interview.results || []);
+      setAllInterviewHistory(interview.results || []);
       setResults([]);
       setSkills(interview.skillDetails || (interview.skills || []).map((s: string) => ({ skill: s })));
       setSkillSummaries(interview.skillSummaries || []);
@@ -2291,13 +2295,35 @@ export default function Dashboard() {
                                 : "This skill area was not reached during this session due to early termination or session flow."}
                             </div>
 
-                            {isAttempted && lastEval?.strengths?.length > 0 && (
-                              <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                {lastEval.strengths.slice(0, 3).map((s: string, i: number) => (
-                                  <span key={i} style={{ fontSize: '11px', background: 'var(--success-50)', color: 'var(--success-700)', padding: '2px 8px', borderRadius: '4px', fontWeight: '600' }}>
-                                    ✓ {s}
-                                  </span>
-                                ))}
+                            {isAttempted && (
+                              <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {/* Strengths */}
+                                {lastEval?.strengths?.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--success-700)', textTransform: 'uppercase', marginBottom: '4px' }}>Strengths</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                      {lastEval.strengths.slice(0, 3).map((s: string, i: number) => (
+                                        <span key={i} style={{ fontSize: '11px', background: 'var(--success-50)', color: 'var(--success-700)', padding: '4px 10px', borderRadius: '6px', fontWeight: '600', border: '1px solid var(--success-100)' }}>
+                                          ✓ {s}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Areas to Improve */}
+                                {(lastEval?.areas_for_improvement?.length > 0 || lastEval?.gaps_identified?.knowledge_gaps?.length > 0) && (
+                                  <div>
+                                    <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--danger-700)', textTransform: 'uppercase', marginBottom: '4px' }}>Areas to Improve</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                      {(lastEval.areas_for_improvement || lastEval.gaps_identified?.knowledge_gaps || []).slice(0, 3).map((a: string, i: number) => (
+                                        <span key={i} style={{ fontSize: '11px', background: 'var(--danger-50)', color: 'var(--danger-700)', padding: '4px 10px', borderRadius: '6px', fontWeight: '600', border: '1px solid var(--danger-100)' }}>
+                                          ⚠ {a}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -2309,7 +2335,19 @@ export default function Dashboard() {
                   <div className="animate-fadeIn">
                     <h3 className="section-title">Session Transcripts</h3>
                     <div style={{ background: 'var(--gray-50)', borderRadius: 'var(--radius-lg)', padding: '24px', marginTop: '16px' }}>
-                      {questionHistory.length > 0 ? (
+                      {allInterviewHistory.length > 0 ? (
+                        allInterviewHistory.map((qa: any, idx: number) => (
+                          <div key={idx} style={{ marginBottom: idx === questionHistory.length - 1 ? 0 : '24px', paddingBottom: idx === questionHistory.length - 1 ? 0 : '24px', borderBottom: idx === questionHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
+                            <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--primary-600)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                              Question {idx + 1}: {qa.skill}
+                            </div>
+                            <p style={{ fontWeight: '600', color: 'var(--gray-800)', marginBottom: '12px', fontSize: '15px' }}>{qa.question}</p>
+                            <div style={{ background: 'white', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--gray-200)', fontSize: '14px', color: 'var(--gray-700)' }}>
+                              <strong>Your Answer:</strong> {qa.answer}
+                            </div>
+                          </div>
+                        ))
+                      ) : questionHistory.length > 0 ? (
                         questionHistory.map((qa: any, idx: number) => (
                           <div key={idx} style={{ marginBottom: idx === questionHistory.length - 1 ? 0 : '24px', paddingBottom: idx === questionHistory.length - 1 ? 0 : '24px', borderBottom: idx === questionHistory.length - 1 ? 'none' : '1px solid var(--gray-200)' }}>
                             <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--primary-600)', textTransform: 'uppercase', marginBottom: '8px' }}>
