@@ -2272,7 +2272,7 @@ export default function Dashboard() {
                       {skills.map((skillItem: any, idx: number) => {
                         const skillName = skillItem.skill;
                         const summaryObj = skillSummaries.find((s: any) => s.skill === skillName);
-                        const skillHistory = questionHistory.filter((q: any) => q.skill === skillName);
+                        const skillHistory = (allInterviewHistory.length > 0 ? allInterviewHistory : questionHistory).filter((q: any) => q.skill === skillName);
                         const lastEval = skillHistory[skillHistory.length - 1]?.evaluation?.evaluation || skillHistory[skillHistory.length - 1]?.evaluation;
                         const isAttempted = skillHistory.length > 0;
                         
