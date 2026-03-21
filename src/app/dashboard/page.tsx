@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [terminationReason, setTerminationReason] = useState<string | null>(null);
   const [summaryTab, setSummaryTab] = useState<'analysis' | 'transcripts'>('analysis');
   const [allInterviewHistory, setAllInterviewHistory] = useState<any[]>([]);
+  const [cameraUsed, setCameraUsed] = useState(false);
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
@@ -255,6 +256,7 @@ export default function Dashboard() {
 
   // ========== CAMERA FUNCTIONS ==========
   const startCamera = async () => {
+    setCameraUsed(true);
     try {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
@@ -349,10 +351,19 @@ export default function Dashboard() {
         }
       }
 
-      const mediaRecorder = new MediaRecorder(cameraStream, {
-        mimeType: 'video/webm;codecs=vp9,opus',
-        videoBitsPerSecond: 2500000
-      });
+      let options = { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 2500000 };
+      if (typeof MediaRecorder !== 'undefined') {
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+          options = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 2500000 };
+          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            options = { mimeType: 'video/webm', videoBitsPerSecond: 2500000 };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+              options = { mimeType: '', videoBitsPerSecond: 2500000 };
+            }
+          }
+        }
+      }
+      const mediaRecorder = new MediaRecorder(cameraStream, options);
 
       mediaRecorderRef.current = mediaRecorder;
 
@@ -738,6 +749,7 @@ export default function Dashboard() {
         setCurrentQuestion(data.question.question);
         setCurrentAnalysis(null);
         setAllInterviewHistory([]);
+        setCameraUsed(false);
 
         // Add to conversation flow
         setConversationFlow([{
@@ -1629,6 +1641,36 @@ export default function Dashboard() {
 
   if (loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {showQuitConfirm && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          background: 'rgba(15, 23, 42, 0.8)', 
+          backdropFilter: 'blur(8px)',
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          zIndex: 10000,
+          padding: '24px'
+        }}>
+          <div className="card animate-slideUp" style={{ maxWidth: '450px', width: '100%', padding: '40px', textAlign: 'center', background: 'white' }}>
+            <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--danger-50)', color: 'var(--danger-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', fontSize: '32px' }}>
+              ⚠️
+            </div>
+            <h3 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--gray-900)', marginBottom: '16px' }}>Quit Interview?</h3>
+            <p style={{ color: 'var(--gray-600)', marginBottom: '32px', fontSize: '16px', lineHeight: '1.6' }}>
+              Are you sure you want to end this session? Your current progress will be saved as a partial result.
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={cancelQuit}>Continue</button>
+              <button className="btn btn-primary" style={{ flex: 1, background: 'var(--danger-600)' }} onClick={confirmQuit}>Quit Session</button>
+            </div>
+          </div>
+        </div>
+      )}
       <p>Loading...</p>
     </div>;
   }
@@ -2093,6 +2135,25 @@ export default function Dashboard() {
                     <div style={{ fontSize: '12px', color: 'var(--gray-400)', fontWeight: '600' }}>
                       Switches: <span style={{ color: tabSwitchCount > 1 ? 'var(--danger-400)' : 'white' }}>{tabSwitchCount}/3</span>
                     </div>
+                    <div style={{ width: '1px', height: '20px', background: 'var(--gray-700)' }} />
+                    <button 
+                      onClick={quitInterview}
+                      style={{ 
+                        background: 'rgba(239, 68, 68, 0.15)', 
+                        color: '#f87171', 
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        padding: '4px 12px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        height: 'fit-content',
+                        alignSelf: 'center'
+                      }}
+                    >
+                      Quit Session
+                    </button>
                   </div>
                 </div>
 
@@ -2193,7 +2254,62 @@ export default function Dashboard() {
                     marginBottom: '32px',
                     lineHeight: '1.8'
                   }}>
-                    <p style={{ fontSize: '16px', color: 'var(--gray-800)' }}>{feedbackText || "Evaluating..."}</p>
+                    {detailedFeedback ? (
+                      <div className="animate-fadeIn">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                          {[
+                            { label: 'Technical', score: detailedFeedback.scores?.technical_score, color: 'var(--primary-600)' },
+                            { label: 'Confidence', score: detailedFeedback.scores?.confidence_score, color: 'var(--success-600)' },
+                            { label: 'Communication', score: detailedFeedback.scores?.communication_score, color: 'var(--info-600)' },
+                            { label: 'Behavioral', score: detailedFeedback.scores?.behavioral_score, color: 'var(--warning-600)', hide: !cameraUsed }
+                          ].filter(m => !m.hide && m.score > 0).map((m, i) => (
+                            <div key={i} style={{ background: 'white', padding: '12px', borderRadius: '12px', border: '1px solid var(--gray-200)', textAlign: 'center' }}>
+                              <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--gray-500)', textTransform: 'uppercase', marginBottom: '4px' }}>{m.label}</div>
+                              <div style={{ fontSize: '20px', fontWeight: '800', color: m.color }}>{m.score}/10</div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div style={{ marginBottom: '20px' }}>
+                          <div style={{ fontWeight: '800', fontSize: '14px', color: 'var(--gray-900)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary-500)' }}></span>
+                            Professional Assessment
+                          </div>
+                          <div style={{ fontSize: '15px', color: 'var(--gray-700)', lineHeight: '1.6', background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid var(--gray-100)' }}>
+                            {detailedFeedback.summary_feedback || detailedFeedback.reasoning || feedbackText}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                          {detailedFeedback.strengths?.length > 0 && (
+                            <div>
+                              <div style={{ fontWeight: '800', fontSize: '12px', color: 'var(--success-700)', textTransform: 'uppercase', marginBottom: '8px' }}>Strengths</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {detailedFeedback.strengths.slice(0, 3).map((s: string, i: number) => (
+                                  <div key={i} style={{ fontSize: '13px', color: 'var(--success-800)', display: 'flex', gap: '8px', alignItems: 'start' }}>
+                                    <span style={{ color: 'var(--success-500)' }}>✓</span> {s}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {(detailedFeedback.areas_for_improvement?.length > 0 || detailedFeedback.gaps_identified?.knowledge_gaps?.length > 0) && (
+                            <div>
+                              <div style={{ fontWeight: '800', fontSize: '12px', color: 'var(--danger-700)', textTransform: 'uppercase', marginBottom: '8px' }}>To Improve</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {(detailedFeedback.areas_for_improvement || detailedFeedback.gaps_identified?.knowledge_gaps || []).slice(0, 3).map((a: string, i: number) => (
+                                  <div key={i} style={{ fontSize: '13px', color: 'var(--danger-800)', display: 'flex', gap: '8px', alignItems: 'start' }}>
+                                    <span style={{ color: 'var(--danger-500)' }}>○</span> {a}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '16px', color: 'var(--gray-800)' }}>{feedbackText || "Evaluating..."}</p>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -2297,6 +2413,23 @@ export default function Dashboard() {
 
                             {isAttempted && (
                               <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {/* Sub-scores for Detailed breakdown */}
+                                {isAttempted && lastEval?.scores && (
+                                  <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--gray-100)', paddingBottom: '16px', overflowX: 'auto' }}>
+                                    {[
+                                      { label: 'Technical', score: lastEval.scores.technical_score },
+                                      { label: 'Communication', score: lastEval.scores.communication_score },
+                                      { label: 'Confidence', score: lastEval.scores.confidence_score },
+                                      { label: 'Behavioral', score: lastEval.scores.behavioral_score, hide: !cameraUsed }
+                                    ].filter(s => !s.hide && s.score > 0).map((s, i) => (
+                                      <div key={i} style={{ minWidth: '70px', flex: 1, textAlign: 'center', background: 'var(--gray-50)', padding: '6px', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '9px', fontWeight: '700', color: 'var(--gray-500)', textTransform: 'uppercase' }}>{s.label}</div>
+                                        <div style={{ fontSize: '13px', fontWeight: '800', color: 'var(--gray-900)' }}>{s.score}/10</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
                                 {/* Strengths */}
                                 {lastEval?.strengths?.length > 0 && (
                                   <div>
