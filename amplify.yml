@@ -3,7 +3,8 @@ frontend:
   phases:
     preBuild:
       commands:
-        - npm ci
+        - nvm use 20
+        - npm install
     build:
       commands:
         - npm run build
