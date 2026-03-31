@@ -219,20 +219,23 @@ export default function Dashboard() {
   // Register event listeners ONCE — handler is always fresh via ref
   useEffect(() => {
     let lastTrigger = 0;
+    let isAway = false;
     let blurTimeout: NodeJS.Timeout | null = null;
 
     const fireSwitch = (reason = 'Tab/app switch detected') => {
       const now = Date.now();
-      // Debounce: prevent visibilitychange and blur from double-counting the EXACT same event within 500ms
-      if (now - lastTrigger > 500) {
+      // Only penalize if they just left (prevents rapid-fire stopwatch penalties)
+      // Debounce: prevent visibilitychange and blur from double-counting the EXACT same event
+      if (!isAway && (now - lastTrigger > 500)) {
+        isAway = true;
         lastTrigger = now;
         switchHandlerRef.current();
       }
     };
 
     const handleVisibilityChange = () => {
-      if (ignoreFocusLossRef.current) return;
       if (document.hidden) {
+        if (ignoreFocusLossRef.current) return;
         visibilityRef.current = false;
         // If we transitioned to hidden, fire switch immediately and clear blur timeout
         if (blurTimeout) {
@@ -241,6 +244,7 @@ export default function Dashboard() {
         }
         fireSwitch('Tab hidden');
       } else {
+        isAway = false;
         visibilityRef.current = true;
       }
     };
@@ -253,12 +257,14 @@ export default function Dashboard() {
       blurTimeout = setTimeout(() => {
         // Only fire if STILL blurred AND not hidden (if hidden, it was already counted)
         if (!document.hasFocus() && visibilityRef.current) {
+          if (ignoreFocusLossRef.current) return;
           fireSwitch('Window lost focus');
         }
       }, 2000);
     };
 
     const handleFocus = () => {
+      isAway = false;
       if (blurTimeout) {
         clearTimeout(blurTimeout);
         blurTimeout = null;
@@ -295,6 +301,7 @@ export default function Dashboard() {
     };
 
     const handleWindowFocus = () => {
+      isAway = false;
       console.log('Integrity Check: Window regained focus');
     };
 
