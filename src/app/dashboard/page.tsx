@@ -45,6 +45,8 @@ export default function Dashboard() {
   const [cameraUsed, setCameraUsed] = useState(false);
   const [pendingTurn, setPendingTurn] = useState<any>(null);
   const [currentLevel, setCurrentLevel] = useState(1);
+  const ignoreFocusLossRef = useRef<boolean>(false);
+  const speakTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const answerBoxRef = useRef<HTMLTextAreaElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
@@ -229,6 +231,7 @@ export default function Dashboard() {
     };
 
     const handleVisibilityChange = () => {
+      if (ignoreFocusLossRef.current) return;
       if (document.hidden) {
         visibilityRef.current = false;
         // If we transitioned to hidden, fire switch immediately and clear blur timeout
@@ -276,6 +279,7 @@ export default function Dashboard() {
 
     // Focus Polling (Aggressive fallback for Chrome/Edge)
     const focusInterval = setInterval(() => {
+      if (ignoreFocusLossRef.current) return;
       if (isInterviewActive && !document.hasFocus()) {
         console.warn('Integrity Check: Document has lost focus (Polling)');
         fireSwitch('Background usage or tab switch detected');
@@ -283,6 +287,7 @@ export default function Dashboard() {
     }, 1500); // More frequent polling
 
     const handleWindowBlur = () => {
+      if (ignoreFocusLossRef.current) return;
       if (isInterviewActive) {
         console.warn('Integrity Check: Window blur event');
         fireSwitch('Tab switch or minimized detected');
@@ -300,8 +305,8 @@ export default function Dashboard() {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('resize', handleResize);
       clearInterval(focusInterval);
       if (blurTimeout) clearTimeout(blurTimeout);
@@ -375,12 +380,13 @@ export default function Dashboard() {
     
     // Synchronous immediate cancel
     synth.cancel();
+    if (speakTimeoutRef.current) clearTimeout(speakTimeoutRef.current);
     
     // Robustness: only speak if there is meaningful text
     if (!text || text.trim().length === 0) return;
     
     // Tiny delay to ensure browser speech engine has actually cleared the queue
-    setTimeout(() => {
+    speakTimeoutRef.current = setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.95; // Slightly faster for natural feel
       utterance.pitch = 1;
@@ -397,6 +403,8 @@ export default function Dashboard() {
 
   // ========== CAMERA FUNCTIONS ==========
   const startCamera = async () => {
+    ignoreFocusLossRef.current = true;
+    setTimeout(() => { ignoreFocusLossRef.current = false; }, 15000); // 15 seconds for user to click 'Allow' on the permission modal
     setCameraUsed(true);
     try {
       if (cameraStream) {
@@ -805,16 +813,30 @@ export default function Dashboard() {
     const status = document.getElementById("interview-uploadStatus") as HTMLElement;
     if (status) status.innerText = "Analyzing CV...";
 
-    const fd = new FormData();
-    fd.append("cv", cv);
-
     try {
+      // Convert file to base64
+      const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+        });
+      };
+
+      const base64Str = await fileToBase64(cv);
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-      const data = await apiCall('/upload-and-analyze', {
+      const data = await apiCall('/upload-and-analyze-base64', {
         method: "POST",
-        body: fd,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: cv.name,
+          file_data: base64Str,
+          email: user?.email
+        }),
         signal: controller.signal
       });
 
@@ -1070,6 +1092,8 @@ export default function Dashboard() {
       alert("Voice input only works in Chrome/Edge");
       return;
     }
+    ignoreFocusLossRef.current = true;
+    setTimeout(() => { ignoreFocusLossRef.current = false; }, 15000);
     const recognition = new (window as any).webkitSpeechRecognition();
     recognition.lang = "en-US";
     recognition.continuous = false;
