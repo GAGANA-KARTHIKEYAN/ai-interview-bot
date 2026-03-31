@@ -163,13 +163,11 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Footer */}
       <div style={{
         textAlign: 'center', padding: '30px 40px',
         borderTop: '1px solid rgba(255,255,255,0.05)',
         color: 'rgba(255,255,255,0.3)', fontSize: 13, position: 'relative', zIndex: 10,
       }}>
-        © 2026 AI InterviewBot. Built with ❤️ and AI.
       </div>
     </div>
   );
