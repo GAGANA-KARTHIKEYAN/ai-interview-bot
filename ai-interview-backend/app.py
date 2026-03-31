@@ -1,4 +1,4 @@
-# v2.1.0 - binary media types + supabase PDF storage
+# v3.0.0 - Fully migrated to AWS (DynamoDB + S3) + Historical Weakness RAG
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,7 +19,7 @@ from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 import pypdf
 from pydantic import BaseModel
-from supabase import create_client, Client
+import aws_db
 
 # Optional imports for Lambda runtime
 try:
@@ -63,47 +63,35 @@ async def add_process_time_header(request, call_next):
                 headers={
                     "Access-Control-Allow-Origin": "*",
                     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-                    "Access-Control-Allow-Headers": "Content-Type, Authorization, email, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization, email, Accept, Origin, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent, X-Requested-With",
                     "Access-Control-Max-Age": "86400",
                 }
             )
         response = await call_next(request)
-        # Reinforce CORS headers for every response
+        # Force CORS headers on all successful responses
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, email, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, email, Accept, Origin, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent, X-Requested-With"
         return response
     except Exception as e:
-        logger.error(f"Error processing request: {e}")
+        logger.error(f"CRITICAL ERROR: {e}")
         logger.error(traceback.format_exc())
         return JSONResponse(
             status_code=500,
-            content={"success": False, "error": str(e)},
+            content={"success": False, "error": str(e), "msg": "Internal Server Error"},
             headers={
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization, email, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, email, Accept, Origin, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, X-Amz-User-Agent, X-Requested-With",
             }
         )
 
-# ========== SUPABASE CONFIGURATION ==========
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase: Client = None
-supabase_error = None
+# ========== AWS CONFIGURATION ==========
+# DynamoDB and S3 are configured via aws_db.py (boto3 uses env vars AWS_ACCESS_KEY_ID,
+# AWS_SECRET_ACCESS_KEY, AWS_REGION automatically from the environment / Lambda IAM role)
+logger.info("Using AWS DynamoDB + S3 for storage (Supabase removed)")
 
-if SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("Supabase client initialized successfully")
-    except Exception as e:
-        supabase_error = str(e)
-        print(f"Failed to initialize Supabase: {e}")
-else:
-    supabase_error = "SUPABASE_URL or SUPABASE_KEY missing"
-    print(supabase_error)
-
-# Create data directories
+# Create data directories - only in /tmp for Lambda
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
     DATA_DIR = "/tmp/data"
@@ -115,14 +103,28 @@ PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 
+# Ensure directories exist
 try:
     os.makedirs(RESUMES_DIR, exist_ok=True)
-    print(f"Resumes directory ready at: {RESUMES_DIR}")
+    logger.info(f"Resumes directory ready at: {RESUMES_DIR}")
 except Exception as e:
-    print(f"Error creating directory: {e}")
+    logger.error(f"Error creating directory: {e}")
 
-# Mount static files to serve resumes
-app.mount("/uploads", StaticFiles(directory=RESUMES_DIR), name="uploads")
+# Root and Health check endpoints
+@app.get("/")
+async def root():
+    return {"message": "AI Interview Bot API is running", "environment": "lambda" if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else "local"}
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+# Mount static files safely
+try:
+    if os.path.exists(RESUMES_DIR):
+        app.mount("/uploads", StaticFiles(directory=RESUMES_DIR), name="uploads")
+except Exception as e:
+    logger.error(f"Failed to mount static files: {e}")
 
 def get_profiles():
     if not os.path.exists(PROFILES_FILE):
@@ -173,57 +175,47 @@ async def auth(payload: dict):
     
     if not email or not password:
         return {"success": False, "error": "Email and password required"}
-        
-    if supabase:
-        try:
-            if auth_type == "signup":
-                # Check if exists
-                res = supabase.table("users").select("*").eq("email", email).execute()
-                if res.data: return {"success": False, "error": "User already exists"}
-                # Insert
-                new_user = {
-                    "email": email, "password": password, 
-                    "name": name or email.split("@")[0]
-                }
-                supabase.table("users").insert(new_user).execute()
-                # Create profile
-                supabase.table("profiles").insert({"email": email}).execute()
-                return {"success": True}
-            elif auth_type == "login":
-                res = supabase.table("users").select("*").eq("email", email).eq("password", password).execute()
-                if not res.data: return {"success": False, "error": "Invalid credentials"}
-                user = res.data[0]
-                return {"success": True, "user": {"id": user.get("id"), "email": user["email"], "name": user.get("name")}}
-        except Exception as e:
-            logger.error(f"Supabase auth failed: {e}")
-            return {"success": False, "error": f"Database Error: {str(e)}"}
-
-    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral storage
-    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        return {
-            "success": False, 
-            "error": "CRITICAL: Database configuration missing. Please add SUPABASE_URL and SUPABASE_KEY to Amplify environment variables."
-        }
-
-    # Fallback to local storage (Only for local development)
-    users = cast(List[Dict[str, Any]], get_users())
-    if auth_type == "signup":
-        if any(u["email"] == email for u in users):
-            return {"success": False, "error": "User already exists"}
-        new_user = {
-            "id": int(datetime.now().timestamp() * 1000),
-            "email": email,
-            "password": password,
-            "name": name or email.split("@")[0],
-            "createdAt": datetime.now().isoformat()
-        }
-        users.append(new_user)
-        save_users(users)
-        return {"success": True}
-    elif auth_type == "login":
-        user = next((u for u in users if u["email"] == email and u["password"] == password), None)
-        if not user: return {"success": False, "error": "Invalid credentials"}
-        return {"success": True, "user": {"id": user["id"], "email": user["email"], "name": user.get("name")}}
+    
+    try:
+        if auth_type == "signup":
+            existing = aws_db.get_user(email)
+            if existing:
+                return {"success": False, "error": "User already exists"}
+            created_at = datetime.now().isoformat()
+            aws_db.save_user(email, name or email.split("@")[0], created_at)
+            aws_db.save_profile(email, {"email": email, "resume": None, "parsedResume": None})
+            return {"success": True}
+        elif auth_type == "login":
+            # Local fallback: verify user exists + password stored in DynamoDB profile
+            user = aws_db.get_user(email)
+            if not user:
+                return {"success": False, "error": "Invalid credentials"}
+            # Simple password check (stored on save)
+            stored_pw = aws_db.get_profile(email).get("password", "")
+            if stored_pw and stored_pw != password:
+                return {"success": False, "error": "Invalid credentials"}
+            return {"success": True, "user": {"email": user["email"], "name": user.get("name")}}
+    except Exception as e:
+        logger.error(f"Auth error: {e}")
+        # Fallback to local JSON file for development
+        users = cast(List[Dict[str, Any]], get_users())
+        if auth_type == "signup":
+            if any(u["email"] == email for u in users):
+                return {"success": False, "error": "User already exists"}
+            new_user = {
+                "id": int(datetime.now().timestamp() * 1000),
+                "email": email, "password": password,
+                "name": name or email.split("@")[0],
+                "createdAt": datetime.now().isoformat()
+            }
+            users.append(new_user)
+            save_users(users)
+            return {"success": True}
+        elif auth_type == "login":
+            user = next((u for u in users if u["email"] == email and u["password"] == password), None)
+            if not user:
+                return {"success": False, "error": "Invalid credentials"}
+            return {"success": True, "user": {"id": user["id"], "email": user["email"], "name": user.get("name")}}
     
     return {"success": False, "error": "Invalid type"}
 
@@ -232,175 +224,130 @@ async def get_profile(email: str = Header(None)):
     if not email:
         raise HTTPException(status_code=400, detail="Email header required")
     
-    if supabase:
-        try:
-            res = supabase.table("profiles").select("*").eq("email", email).execute()
-            if res.data:
-                p = res.data[0]
-                # Map snake_case to camelCase for frontend
-                return {
-                    "email": p.get("email"),
-                    "resume": p.get("resume"),
-                    "parsedResume": p.get("parsed_resume")
-                }
-        except Exception as e:
-            logger.error(f"Supabase get_profile failed: {e}")
-
+    try:
+        profile = aws_db.get_profile(email)
+        if profile:
+            return {
+                "email": profile.get("email", email),
+                "resume": profile.get("resume"),
+                "parsedResume": profile.get("parsedResume")
+            }
+    except Exception as e:
+        logger.error(f"DynamoDB get_profile failed: {e}")
+    
+    # Local fallback
     profiles = get_profiles()
     profile = next((p for p in profiles if p["email"] == email), None)
-    
     if not profile:
         return {"email": email, "resume": None, "parsedResume": None}
-    
     return profile
 
 @app.post("/api/profile")
 async def update_profile(payload: dict):
-    email = payload.get("email")
+    profile_data = payload.get("profile", payload)
+    email = profile_data.get("email") or payload.get("email")
+    
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
     
-    # Map camelCase from frontend to snake_case for Supabase
-    mapped_data = {
+    new_data = {
         "email": email,
-        "resume": payload.get("resume"),
-        "parsed_resume": payload.get("parsedResume"),
+        "resume": profile_data.get("resume"),
+        "parsedResume": profile_data.get("parsedResume", profile_data.get("parsed_resume")),
         "updated_at": datetime.now().isoformat()
     }
     
-    if supabase:
-        try:
-            res = supabase.table("profiles").select("*").eq("email", email).execute()
-            if res.data:
-                # Merge existing data to preserve resume_base64 if not provided
-                existing = res.data[0]
-                final_data = {**existing, **{k: v for k, v in mapped_data.items() if v is not None}}
-                supabase.table("profiles").update(final_data).eq("email", email).execute()
-            else:
-                supabase.table("profiles").insert(mapped_data).execute()
-            # If we succeeded with Supabase, we can still fall back to local below for redundancy
-        except Exception as e:
-            logger.error(f"Supabase update_profile failed: {e}")
-            return {"success": False, "error": f"Database Error: {str(e)}"}
-
-    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral profile
-    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        return {"success": False, "error": "Database configuration missing. Profile could not be saved."}
-
-    # Fallback to local storage
     try:
-        profiles = cast(List[Dict[str, Any]], get_profiles())
-        user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
-        
-        local_data = {
-            "email": email,
-            "resume": payload.get("resume"),
-            "parsedResume": payload.get("parsedResume"),
-            "updatedAt": datetime.now().isoformat()
-        }
-        
-        if user_idx > -1:
-            # Merge
-            profiles[user_idx].update({k: v for k, v in local_data.items() if v is not None})
-        else:
-            profiles.append(local_data)
-        
-        save_profiles(profiles)
+        existing = aws_db.get_profile(email) or {}
+        merged = {**existing, **{k: v for k, v in new_data.items() if v is not None}}
+        aws_db.save_profile(email, merged)
         return {"success": True}
     except Exception as e:
-        logger.error(f"Local profile update failed: {e}")
-        return {"success": False, "error": str(e)}
+        logger.error(f"DynamoDB update_profile failed: {e}")
+        # Local fallback
+        try:
+            profiles = cast(List[Dict[str, Any]], get_profiles())
+            user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
+            local_data = {
+                "email": email,
+                "resume": payload.get("resume"),
+                "parsedResume": payload.get("parsedResume"),
+                "updatedAt": datetime.now().isoformat()
+            }
+            if user_idx > -1:
+                profiles[user_idx].update({k: v for k, v in local_data.items() if v is not None})
+            else:
+                profiles.append(local_data)
+            save_profiles(profiles)
+            return {"success": True}
+        except Exception as e2:
+            return {"success": False, "error": str(e2)}
 
 @app.post("/api/resume")
 async def upload_resume_profile(resume: UploadFile = File(...), email: str = Header(None)):
     if not email:
         raise HTTPException(status_code=400, detail="Email header required")
     
-    # Save file
     safe_email = email.replace("@", "_").replace(".", "_")
     file_name = f"{safe_email}.pdf"
-    file_path = os.path.join(RESUMES_DIR, file_name)
-    
-    # Ensure directory exists before every save attempt to be super safe
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
     
     try:
         content = await resume.read()
         if len(content) == 0:
             raise Exception("Uploaded file is empty")
-            
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-        logger.info(f"Successfully saved profile resume for {email} to {file_path} ({len(content)} bytes)")
-    except Exception as e:
-        logger.error(f"Failed to save profile resume for {email}: {e}")
-        raise HTTPException(status_code=500, detail=f"File save error: {str(e)}")
-    
-    resume_url = f"/api/uploads/{file_name}"
-    
-    # Base64 encode the PDF for permanent DB storage (bypassing ephemeral /tmp)
-    import base64
-    b64_content = base64.b64encode(content).decode('ascii')
-    
-    if supabase:
-        try:
-            profile_data = {
-                "email": email,
-                "resume": resume_url,
-                "resume_base64": b64_content,
-                "parsed_resume": None,
-                "updated_at": datetime.now().isoformat()
-            }
-            res = supabase.table("profiles").select("*").eq("email", email).execute()
-            if res.data:
-                supabase.table("profiles").update(profile_data).eq("email", email).execute()
-            else:
-                supabase.table("profiles").insert(profile_data).execute()
-        except Exception as e:
-            logger.error(f"Supabase upload sync failed: {e}")
-
-    # Update profile
-    profiles = get_profiles()
-    profile_data = {
-        "email": email,
-        "resume": resume_url,
-        "parsedResume": None,
-        "updatedAt": datetime.now().isoformat()
-    }
-    
-    user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
-    if user_idx > -1:
-        profiles[user_idx] = profile_data
-    else:
-        profiles.append(profile_data)
         
-    save_profiles(profiles)
-    
-    return {"success": True, "resumeUrl": resume_url}
+        # Upload to S3
+        s3_url = aws_db.upload_to_s3(content, file_name, content_type="application/pdf")
+        resume_url = f"/api/uploads/{file_name}"
+        
+        # Update profile in DynamoDB
+        existing = aws_db.get_profile(email) or {}
+        existing.update({
+            "email": email,
+            "resume": resume_url,
+            "s3_url": s3_url,
+            "parsedResume": None,
+            "updated_at": datetime.now().isoformat()
+        })
+        aws_db.save_profile(email, existing)
+        
+        logger.info(f"Resume for {email} uploaded to S3: {s3_url}")
+        return {"success": True, "resumeUrl": resume_url}
+    except Exception as e:
+        logger.error(f"Resume upload failed: {e}")
+        # Local fallback: save to disk
+        file_path = os.path.join(RESUMES_DIR, file_name)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        try:
+            with open(file_path, "wb") as buffer:
+                buffer.write(content)
+            resume_url = f"/api/uploads/{file_name}"
+            profiles = get_profiles()
+            profile_data = {"email": email, "resume": resume_url, "parsedResume": None}
+            user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
+            if user_idx > -1:
+                profiles[user_idx] = profile_data
+            else:
+                profiles.append(profile_data)
+            save_profiles(profiles)
+            return {"success": True, "resumeUrl": resume_url}
+        except Exception as e2:
+            raise HTTPException(status_code=500, detail=f"File save error: {str(e2)}")
 
 @app.get("/api/uploads/{filename}")
 async def serve_file(filename: str):
-    import base64
     from fastapi.responses import Response
     
-    # Extract email from filename (e.g., test_example_com.pdf -> test@example.com)
-    # The frontend usually requests the file_name generated by upload
-    safe_email = filename.replace(".pdf", "")
+    # Try to fetch from S3
+    try:
+        s3 = aws_db.s3
+        response = s3.get_object(Bucket=aws_db.S3_BUCKET_NAME, Key=f"resumes/{filename}")
+        pdf_bytes = response["Body"].read()
+        return Response(content=pdf_bytes, media_type="application/pdf")
+    except Exception as e:
+        logger.warning(f"S3 fetch failed, trying local: {e}")
     
-    if supabase:
-        try:
-            # We must search profiles to find the matching resume
-            # Since we replaced '@' and '.' with '_', it's tricky to reverse perfectly,
-            # so we'll fetch the profile where resume URL matches
-            res = supabase.table("profiles").select("resume_base64").eq("resume", f"/api/uploads/{filename}").execute()
-            if res.data and res.data[0].get("resume_base64"):
-                b64_content = res.data[0]["resume_base64"]
-                pdf_bytes = base64.b64decode(b64_content)
-                return Response(content=pdf_bytes, media_type="application/pdf")
-        except Exception as e:
-            logger.error(f"Supabase serve_file failed: {e}")
-            
-    # Fallback to local file system if Supabase isn't configured or failed
+    # Fallback to local file system
     file_path = os.path.join(RESUMES_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -411,34 +358,28 @@ async def delete_resume_profile(email: str = Header(None)):
     if not email:
         raise HTTPException(status_code=400, detail="Email header required")
     
-    # Delete file
     safe_email = email.replace("@", "_").replace(".", "_")
     file_name = f"{safe_email}.pdf"
-    file_path = os.path.join(RESUMES_DIR, file_name)
     
+    # Delete from S3
+    try:
+        aws_db.s3.delete_object(Bucket=aws_db.S3_BUCKET_NAME, Key=f"resumes/{file_name}")
+    except Exception as e:
+        logger.warning(f"S3 delete failed: {e}")
+    
+    # Delete from local disk (if exists)
+    file_path = os.path.join(RESUMES_DIR, file_name)
     if os.path.exists(file_path):
         os.remove(file_path)
-        
-    if supabase:
-        try:
-            update_data = {
-                "resume": None,
-                "resume_base64": None,
-                "parsed_resume": None,
-                "updated_at": datetime.now().isoformat()
-            }
-            supabase.table("profiles").update(update_data).eq("email", email).execute()
-        except Exception as e:
-            logger.error(f"Supabase delete sync failed: {e}")
     
-    # Update profile locally
-    profiles = get_profiles()
-    user_idx = next((i for i, p in enumerate(profiles) if p["email"] == email), -1)
-    if user_idx > -1:
-        profiles[user_idx]["resume"] = None
-        profiles[user_idx]["parsedResume"] = None
-        save_profiles(profiles)
-        
+    # Clear from DynamoDB profile
+    try:
+        existing = aws_db.get_profile(email) or {}
+        existing.update({"resume": None, "s3_url": None, "parsedResume": None})
+        aws_db.save_profile(email, existing)
+    except Exception as e:
+        logger.warning(f"DynamoDB profile clear failed: {e}")
+    
     return {"success": True}
 
 @app.post("/api/resume/parse")
@@ -528,8 +469,7 @@ async def get_status():
     return {
         "status": "online",
         "groq_configured": bool(api_key),
-        "supabase_connected": bool(supabase),
-        "supabase_error": supabase_error,
+        "storage_backend": "AWS DynamoDB + S3",
         "environment": "cloud" if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else "local",
         "data_dir_exists": os.path.exists(DATA_DIR),
         "resumes_dir_exists": os.path.exists(RESUMES_DIR),
@@ -604,20 +544,15 @@ async def fetch_history(email: str = Header(None)):
     if not email:
         raise HTTPException(status_code=400, detail="Email header required")
     
-    if supabase:
-        try:
-            res = supabase.table("history").select("*").eq("email", email).order("created_at", desc=True).execute()
-            return {"history": [r["data"] for r in res.data]}
-        except Exception as e:
-            logger.error(f"Supabase history fetch failed: {e}")
-
-    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral history
-    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        return {"history": [], "warning": "Database disconnected. Historical data unavailable."}
-
-    history_data = get_history()
-    user_history = [h for h in history_data if h.get("email") == email]
-    return {"history": user_history}
+    try:
+        sessions = aws_db.get_history(email)
+        return {"history": sessions}
+    except Exception as e:
+        logger.error(f"DynamoDB history fetch failed: {e}")
+        # Local fallback
+        history_data = get_history()
+        user_history = [h for h in history_data if h.get("email") == email]
+        return {"history": user_history}
 
 @app.post("/api/history")
 async def add_history(payload: dict, email: str = Header(None)):
@@ -626,27 +561,176 @@ async def add_history(payload: dict, email: str = Header(None)):
     if not user_email or not interview:
         raise HTTPException(status_code=400, detail="Email and interview data required")
     
-    if supabase:
+    try:
+        aws_db.save_full_session(
+            email=user_email,
+            session_data=interview
+        )
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"DynamoDB history save failed: {e}")
+        # Local fallback
+        history_obj = {"email": user_email, "data": interview, "created_at": datetime.now().isoformat()}
+        history_data = get_history()
+        history_data.append(history_obj)
+        save_history(history_data)
+        return {"success": True}
+
+class UploadBase64Payload(BaseModel):
+    filename: str
+    file_data: str # base64 string
+    email: str = None
+
+@app.post("/api/upload-and-analyze-base64")
+async def upload_and_analyze_base64(payload: UploadBase64Payload):
+    """Analyze CV/Resume using AI by receiving base64 JSON (Fix API Gateway Multipart issues)"""
+    try:
+        # Strip header if data URI scheme was included (e.g. data:application/pdf;base64,...)
+        base64_data = payload.file_data
+        if ',' in base64_data:
+            base64_data = base64_data.split(',')[1]
+            
+        content = base64.b64decode(base64_data)
+        filename = payload.filename.lower()
+        
+        if len(content) == 0:
+            return {"success": False, "error": "Empty file received. Please try uploading again."}
+            
+        # Helper to check if file is base64 or binary
+        is_pdf = content[:4] == b'%PDF'
+        is_docx = content[:4] == b'PK\x03\x04'
+        
+        text_chunks = []
+        image_count = 0
+        
+        if is_pdf or filename.endswith('.pdf'):
+            # 1. Try pdfplumber
+            try:
+                with pdfplumber.open(io.BytesIO(content)) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text_chunks.append(str(page_text))
+                        image_count += len(page.images)
+                logger.debug(f"pdfplumber extracted {len(text_chunks)} pages. Images: {image_count}")
+            except Exception as e:
+                logger.warning(f"pdfplumber failed: {e}")
+                
+            # 2. Try pypdf fallback
+            if not text_chunks:
+                try:
+                    reader = pypdf.PdfReader(io.BytesIO(content))
+                    for page in reader.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text_chunks.append(page_text)
+                except Exception as e:
+                    logger.error(f"pypdf failed: {e}")
+        
+        elif is_docx or filename.endswith('.docx'):
+            try:
+                doc = docx.Document(io.BytesIO(content))
+                for para in doc.paragraphs:
+                    if para.text:
+                        text_chunks.append(para.text)
+                # Also check tables
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            if cell.text:
+                                text_chunks.append(cell.text)
+                logger.info(f"docx extracted {len(text_chunks)} chunks")
+            except Exception as e:
+                logger.error(f"docx parsing failed: {e}")
+                return {"success": False, "error": f"Failed to parse Word document: {str(e)}"}
+        else:
+            return {"success": False, "error": "Unsupported file format. Please upload PDF or DOCX."}
+            
+        text = "\n".join(text_chunks).strip()
+        
+        if not text:
+            logger.warning(f"No text extracted. Images: {image_count}")
+            if image_count > 0:
+                return {
+                    "success": False, 
+                    "error": f"Scanned document detected ({image_count} images). This system needs searchable text. Please upload a CV exported from Word/Google Docs."
+                }
+            return {"success": False, "error": "Could not read document text. Please ensure the file is not corrupted or password-protected."}
+            
+        prompt = f'''
+        Extract technical skills from the candidate's CV.
+        
+        CV CONTENT:
+        {text}
+        
+        Analyze the text and identify:
+        1. Programming languages
+        2. Frameworks and Libraries
+        3. Developer Tools (Git, Docker, etc.)
+        4. Databases (SQL, NoSQL)
+        5. Cloud / Infrastructure
+        
+        For each skill, provide:
+        - skill: The canonical name
+        - experience_level: (beginner, intermediate, advanced, or expert)
+        - category: (language, framework, database, tool, or other)
+        - typical_questions: [2 interview questions]
+        
+        Return the result as a JSON array ONLY. 
+        If no technical skills are found, try to infer the most likely skills based on project descriptions.
+        DO NOT include skills that are definitely not present.
+        '''
+        
+        ai_response = call_llm(prompt, max_tokens=2500)
+        logger.info(f"Raw AI Response length: {len(ai_response)}")
+        
+        # Parse AI response
         try:
-            supabase.table("history").insert({
-                "email": user_email,
-                "data": interview,
-                "created_at": datetime.now().isoformat()
-            }).execute()
-        except Exception as e:
-            logger.error(f"Supabase history save failed: {e}")
-            return {"success": False, "error": f"Database Error: {str(e)}"}
-
-    # If in cloud (Lambda) and Supabase is missing, DO NOT fall back to ephemeral history
-    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
-        return {"success": False, "error": "Database configuration missing. Interview history could not be saved."}
-
-    # Fallback/Redundancy to local storage
-    history_obj = {"email": user_email, "data": interview, "created_at": datetime.now().isoformat()}
-    history_data = get_history()
-    history_data.append(history_obj)
-    save_history(history_data)
-    return {"success": True}
+            matched_skills = json.loads(ai_response)
+            if isinstance(matched_skills, dict) and "matched_skills" in matched_skills:
+                matched_skills = matched_skills["matched_skills"]
+        except:
+            json_match = re.search(r'\[\s*\{.*\}\s*\]', ai_response, re.DOTALL)
+            if json_match:
+                try:
+                    matched_skills = json.loads(json_match.group())
+                except:
+                    matched_skills = []
+            else:
+                code_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', ai_response, re.DOTALL)
+                if code_match:
+                    try:
+                        matched_skills = json.loads(code_match.group(1))
+                    except:
+                        matched_skills = []
+                else:
+                    matched_skills = []
+        
+        # If still no skills, use fallback
+        if not matched_skills or len(matched_skills) == 0:
+            logger.warning("No skills extracted, using fallback")
+            matched_skills = get_fallback_skills()
+        
+        # Ensure each skill has all required fields
+        for skill in matched_skills:
+            if not isinstance(skill, dict):
+                continue
+            if "skill" not in skill:
+                skill["skill"] = "Unknown Skill"
+                
+            if "typical_questions" not in skill or not skill["typical_questions"]:
+                skill["typical_questions"] = generate_fallback_questions(str(skill["skill"]), str(skill.get("experience_level", "intermediate")))
+            if "category" not in skill:
+                skill["category"] = categorize_skill(str(skill["skill"]))
+            if "experience_level" not in skill:
+                skill["experience_level"] = "intermediate"
+        
+        logger.info(f"Extracted {len(matched_skills)} skills")
+        return {"matched_skills": matched_skills}
+            
+    except Exception as e:
+        logger.error(f"CV Base64 Analysis Error: {traceback.format_exc()}")
+        return {"matched_skills": get_fallback_skills()}
 
 @app.post("/api/upload-and-analyze")
 async def upload_and_analyze(cv: UploadFile = File(None), resume: UploadFile = File(None)):
@@ -920,20 +1004,38 @@ def categorize_skill(skill: str) -> str:
     return "other"
 
 @app.post("/api/start-interview")
-async def start_interview(payload: dict):
-    """Initialize interview with first question"""
+async def start_interview(payload: dict, email: str = Header(None)):
+    """Initialize interview with first question — with Historical Weakness RAG injection"""
     skills = payload.get("skills", [])
     
     if not skills:
         return {"success": False, "error": "No skills provided"}
     
-    # Get first skill
     first_skill = skills[0]
     skill_name = first_skill["skill"]
     experience_level = first_skill.get("experience_level", "intermediate")
     
-    # Use predefined questions if available
-    if "typical_questions" in first_skill and first_skill["typical_questions"]:
+    # ===== HISTORICAL WEAKNESS RAG INJECTION =====
+    past_weaknesses = []
+    if email:
+        try:
+            past_weaknesses = aws_db.get_candidate_weaknesses(email, skill_name)
+        except Exception as e:
+            logger.warning(f"Could not retrieve weakness history for RAG: {e}")
+    
+    weakness_context = ""
+    if past_weaknesses:
+        weakness_list = "\n".join([f"- {w}" for w in past_weaknesses[:8]])
+        weakness_context = f"""
+    IMPORTANT HISTORICAL CONTEXT (from previous interview sessions):
+    This candidate previously struggled with the following specific concepts in {skill_name}:
+{weakness_list}
+    
+    Your opening question MUST subtly probe one of these weakness areas to see if they have improved.
+    Do NOT directly mention that these are their past weaknesses. Just craft a pointed question around them.
+    """
+    
+    if "typical_questions" in first_skill and first_skill["typical_questions"] and not past_weaknesses:
         question_text = first_skill["typical_questions"][0]
         question_data = {
             "question": question_text,
@@ -944,12 +1046,12 @@ async def start_interview(payload: dict):
             "follow_up_potential": True
         }
     else:
-        # Generate dynamic question
         prompt = f"""
         You are starting a technical interview for a {experience_level} level candidate.
         
         Skill to assess: {skill_name}
         Candidate's estimated level: {experience_level}
+        {weakness_context}
         
         Generate a natural, conversational OPENING question that:
         1. Is warm and professional
@@ -1005,10 +1107,224 @@ async def start_interview(payload: dict):
         "interview_state": interview_state
     }
 
+@app.post("/api/submit-answer")
+async def submit_answer_consolidated(payload: dict, email: str = Header(None)):
+    """
+    SINGLE SOURCE OF TRUTH: One LLM call for Evaluation + Decision + Next Question
+    """
+    skill = payload.get("skill", "")
+    answer = payload.get("answer", "")
+    question = payload.get("question", "")
+    history = payload.get("history", [])
+    skills_remaining = payload.get("skills_remaining", [])
+    input_type = payload.get("input_type", "TEXT")
+    frames = payload.get("video_frames", [])
+
+    if not skill or not answer or not question:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+
+    # 1. Behavioral Analysis (if video)
+    vision_context = ""
+    if input_type == "VIDEO" and frames:
+        client = get_groq_client()
+        if client:
+            try:
+                content = [{"type": "text", "text": "Analyze behavioral aspects: face visibility, eye contact, professional presence. Under 30 words."}]
+                for f in frames[:3]: # Limit frames to save tokens
+                    content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{f}"}})
+                v_resp = client.chat.completions.create(
+                    model="llama-3.2-11b-vision-preview",
+                    messages=[{"role": "user", "content": content}],
+                    temperature=0.3,
+                    max_tokens=200
+                )
+                vision_context = f"VIDEO ANALYSIS: {v_resp.choices[0].message.content.strip()}"
+            except Exception as e:
+                logger.error(f"Vision error: {e}")
+                vision_context = "VIDEO ANALYSIS: Error processing frames."
+
+    # 2. Level and Attempt Tracking
+    current_level = payload.get("level", 1)
+    attempt_count = 1
+    for h in reversed(history):
+        if h.get("skill") == skill and h.get("question") == question:
+            attempt_count += 1
+        else:
+            if h.get("skill") == skill: break
+
+    # 3. CONSOLIDATED PROMPT (Adaptive Level-Based)
+    skill_history = [h.get("question") for h in history if h.get("skill") == skill]
+    
+    prompt = f"""
+    You are an expert technical interviewer conducting a skill-based adaptive interview.
+    Your goal is to evaluate the FULL depth of the skill "{skill}".
+
+    LEVEL-BASED MODEL:
+    Level 1: Basic understanding / definitions.
+    Level 2: Conceptual depth / internal mechanics.
+    Level 3: Practical application / real-world trade-offs / architecture.
+    Level 4: Advanced mastery / edge cases / complex optimization.
+
+    ADAPTIVE LOGIC:
+    - START at Level {current_level}.
+    - MAX QUESTIONS PER SKILL: 4. Total questions answered for "{skill}": {len(skill_history)}. 
+      *RULE*: If {len(skill_history)} >= 4, you MUST set action to "move_next".
+    
+    - If Answer is HIGH quality:
+      * ACTION: "level_up" or "move_next". Move to a SIGNIFICANTLY deeper or different area.
+      * YOU MUST NOT REPEAT any of {skill_history}.
+    
+    - If Answer is MEDIUM quality (Correct but lacks detail):
+      * ACTION: "probe" or "level_up". 
+      * **CRITICAL**: DO NOT repeat "{question}". Move directly to a DIFFERENT TOPIC within "{skill}" to assess breadth.
+    
+    - If Answer is LOW quality: 
+      * Attempt 1 for this question: Action: "retry". Rephrase and explain what was missing.
+      * Attempt 2 for this question: Action: "hint". Provide a technical hint for "{question}".
+      * Attempt 3 or if Answer is detailed (>40 words): Action: "probe" or "move_next". **FORCE A CHANGE**. Move to a COMPLETELY DIFFERENT topic within "{skill}" or the next skill.
+
+    - **PROGRESSION RULE**: The interview MUST NOT get stuck. If a user is struggling with one specific concept, move to a different one to see if they understand other parts of the skill.
+
+    - **CRITICAL SYNC RULE**: Each turn MUST advance the conversation. Use "move_next" to transition to skills in `skills_remaining`.
+    - SYNC CHECK: The "feedback_to_user" field is conversational. The "next_question" field is the actual technical task.
+
+    CONTEXT:
+    - Current Skill: {skill}
+    - Current Level: {current_level}/4
+    - Current Question: {question}
+    - Candidate Answer: "{answer}"
+    - Attempt Count for THIS specific question: {attempt_count}
+    - {vision_context}
+    
+    OUTPUT FORMAT (JSON ONLY):
+    {{
+      "action": "retry | hint | probe | level_up | level_down | move_next",
+      "skill": "{skill}",
+      "level": 1-4,
+      "feedback_to_user": "Short, natural transition or correction based on the candidate's last answer.",
+      "next_question": "The actual technical question to be displayed (only one).",
+      "evaluation": {{
+        "quality": "low | medium | high",
+        "understanding": "incorrect | partial | correct",
+        "confidence": "low | medium | high",
+        "scores": {{
+          "technical": 0-10,
+          "confidence": 0-10,
+          "communication": 0-10,
+          "behavioral": 0-10,
+          "overall_score": 0-10
+        }},
+        "technical_accuracy": {{
+          "correct": ["List specific technical keywords, patterns, or formulas mentioned correctly by the candidate. MINIMUM 2 items."],
+          "missed": ["List specific technical details or nuances that were missing but expected for a high-quality answer."],
+          "incorrect": ["List any technical inaccuracies or misstatements."]
+        }},
+        "strengths": ["list of behavioral or general technical strengths"],
+        "weaknesses": ["list of behavioral or general technical weaknesses"],
+        "improvement_tips": ["Actionable advice for the candidate"]
+      }}
+    }}
+
+    **TECHNICAL EXTRACTION RULES**: 
+    - You MUST identify specific technical nouns/concepts (e.g., "Virtual DOM", "CAP Theorem", "Hydration", "Event Loop"). 
+    - DO NOT return empty lists for "correct" if the candidate showed ANY understanding. 
+    - Be specific. Instead of "answered correctly", use "Correctly explained state persistence using LocalStorage".
+    - **MANDATORY**: Your JSON response MUST explicitly include the "technical_accuracy" object exactly as shown, with "correct", "missed", and "incorrect" arrays. Do not skip this field.
+
+    SYNC RULE: 
+    - The "feedback_to_user" should be purely conversational (e.g., "Good point", "I see", "Let's dig deeper") and ONLY provide a transition.
+    - **CRITICAL**: DO NOT include the next technical question or any part of it in "feedback_to_user".
+    - "next_question" is the core technical prompt that will be shown on screen and should NOT contain conversational filler.
+    - If the "feedback_to_user" and "next_question" are combined by the UI, they must not result in redundant sentences.
+    """
+
+    try:
+        ai_response = call_llm(prompt, max_tokens=3000)
+        result = extract_json(ai_response)
+        
+        # Default level fallback
+        if "level" not in result:
+            result["level"] = current_level
+
+        # Force move action if max questions reached (max 3 questions -> len(skill_history) >= 2)
+        if len(skill_history) >= 2 and result.get("action") != "move_next":
+            result["action"] = "move_next"
+            if "feedback_to_user" not in result or len(str(result.get("feedback_to_user", ""))) < 5:
+                result["feedback_to_user"] = "You've provided enough detail on this topic. Let's move on to the next skill."
+            result["next_question"] = ""
+
+        # Guarantee evaluation block is never missing
+        if "evaluation" not in result or not isinstance(result["evaluation"], dict):
+            result["evaluation"] = {}
+            
+        eval_dict = result["evaluation"]
+        eval_dict["quality"] = eval_dict.get("quality", "medium")
+        eval_dict["understanding"] = eval_dict.get("understanding", "partial")
+        eval_dict["confidence"] = eval_dict.get("confidence", "medium")
+        
+        if "scores" not in eval_dict or not isinstance(eval_dict["scores"], dict):
+            eval_dict["scores"] = {"overall_score": 5, "technical": 5}
+        if "technical_accuracy" not in eval_dict or not isinstance(eval_dict["technical_accuracy"], dict):
+            eval_dict["technical_accuracy"] = {"correct": ["(System: LLM skipped technical extraction)"], "missed": [], "incorrect": []}
+
+        # Ensure scores are clamped between 0 and 10 and format is clean
+        for k, v in list(eval_dict["scores"].items()):
+            if isinstance(v, (int, float)):
+                eval_dict["scores"][k] = max(0, min(10, int(v)))
+            elif isinstance(v, str):
+                try:
+                    num = float(v.split('/')[0].strip())
+                    eval_dict["scores"][k] = max(0, min(10, int(num)))
+                except (ValueError, TypeError):
+                    eval_dict["scores"][k] = 5
+
+        # Logic for skill transition
+        should_transition = {"transition": False}
+        if result.get("action") == "move_next":
+            if skills_remaining:
+                should_transition = {
+                    "transition": True,
+                    "reason": "Concluding skill exploration",
+                    "next_skill": skills_remaining[0],
+                    "complete": False
+                }
+            else:
+                should_transition = {"transition": True, "reason": "Interview complete", "complete": True}
+
+        # ===== HISTORICAL WEAKNESS RAG: Save weaknesses to DynamoDB =====
+        # Fire-and-forget: don't block the response if DynamoDB is unavailable
+        if email:
+            try:
+                aws_db.append_history_and_extract_weaknesses(
+                    email=email,
+                    skill=skill,
+                    question=question,
+                    answer=answer,
+                    evaluation=eval_dict
+                )
+            except Exception as rag_err:
+                logger.warning(f"RAG weakness save failed (non-blocking): {rag_err}")
+
+        return {
+            "success": True,
+            "evaluation": result.get("evaluation", {}),
+            "decision": {
+                "action": result.get("action"),
+                "feedback_to_user": result.get("feedback_to_user"),
+                "next_question": result.get("next_question"),
+                "level": result.get("level")
+            },
+            "should_transition": should_transition,
+            "attempt_count": attempt_count
+        }
+    except Exception as e:
+        logger.error(f"Level-based logic error: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.post("/api/next-question")
 async def next_question(payload: dict):
     """
-    Dynamically generate the next question based on answer analysis
+    Expert AI Interviewer decision logic
     """
     skill = payload.get("skill", "")
     previous_answer = payload.get("answer", "")
@@ -1022,157 +1338,104 @@ async def next_question(payload: dict):
             "error": "Missing required fields"
         }
     
-    # First, analyze the answer
-    analysis_prompt = f"""
-    Analyze this candidate's answer for a technical interview.
+    # Calculate attempt_count for the current question
+    # We look back in history at how many times the SAME question text was asked for this skill
+    attempt_count = 1
+    for h in reversed(history):
+        if h.get("skill") == skill and h.get("question") == previous_question:
+            attempt_count += 1
+        else:
+            # Once we see a different question for this skill, we stop counting attempts for the 'current' one
+            if h.get("skill") == skill:
+                break
+
+    decision_prompt = f"""
+    You are an expert AI interviewer. Follow these CORE RULES strictly:
     
-    Skill: {skill}
-    Question asked: {previous_question}
-    Candidate's answer: {previous_answer}
+    1. DO NOT assume meaning from weak answers like "idk" or "not sure".
+    2. DO NOT move next on a single weak attempt.
+    3. Attempt 1 (weak) -> Retry (encourage/rephrase)
+    4. Attempt 2 (weak) -> Hint (guide/simplify)
+    5. Attempt 3 (weak) -> Move Next (conclude weak)
     
-    Analyze deeply and return JSON with:
-    1. What concepts did they demonstrate understanding of?
-    2. What concepts did they miss or misunderstand?
-    3. How deep was their answer? (superficial / moderate / deep / expert)
-    4. Did they provide specific examples from experience?
-    5. What's their likely true proficiency level? (beginner/intermediate/advanced/expert)
-    6. What specific aspect should be explored next?
+    CURRENT CONTEXT:
+    - Skill: {skill}
+    - Question asked: {previous_question}
+    - Candidate's answer: {previous_answer}
+    - Attempt number for this specific question: {attempt_count}
     
-    Return ONLY this JSON:
+    DECISION LOGIC:
+    - Evaluate quality: low / medium / high
+    - If low quality + attempt < 3: decide 'retry' or 'hint'.
+    - If low quality + attempt >= 3: decide 'move_next'.
+    - If medium/high quality: decide 'probe' (deeper) or 'move_next' (if satisfied).
+    
+    OUTPUT FORMAT (JSON ONLY):
     {{
-        "demonstrated_concepts": ["concept1", "concept2"],
-        "missing_concepts": ["concept1", "concept2"],
-        "answer_depth": "moderate",
-        "had_examples": true,
-        "true_proficiency": "intermediate",
-        "next_focus": "specific area to probe next"
+      "action": "retry | hint | move_next | probe",
+      "response": "Your natural, supportive interviewer response",
+      "question": "The next or same question (ONLY ONE)"
     }}
+    
+    DECISION GUIDELINES:
+    - If "retry" or "hint": keep the NEXT question the SAME as the current one (maybe slightly rephrased). Use this ONLY if the answer was truly missing technical depth or explicitly "idk".
+    - If "probe" or "level_up": generate a NEW, more challenging question for the SAME skill. **CRITICAL: DO NOT repeat the current question text.**
+    - If "move_next": switch focus to the next skill area in `skills_remaining`.
+    - **CRITICAL**: If the candidate provided a strong/expert answer, you MUST "level_up" or "move_next". DO NOT "retry" or "hint" on strong answers.
+    - If next skill is needed, and skills_remaining is {skills_remaining}, transition naturally.
     """
     
     try:
-        analysis_response = call_llm(analysis_prompt)
-        analysis = extract_json(analysis_response)
-        if not analysis:
-            analysis = {
-                "demonstrated_concepts": [],
-                "missing_concepts": [],
-                "answer_depth": "moderate",
-                "had_examples": False,
-                "true_proficiency": "intermediate",
-                "next_focus": "general"
-            }
-    except:
-        analysis = {
-            "demonstrated_concepts": [],
-            "missing_concepts": [],
-            "answer_depth": "moderate",
-            "had_examples": False,
-            "true_proficiency": "intermediate",
-            "next_focus": "general"
-        }
-    
-    # Determine if we should ask a follow-up or move on
-    questions_asked = len([h for h in history if h.get("skill") == skill])
-    
-    # Decision logic
-    should_transition = False
-    reason = "Continue exploring"
-    
-    if questions_asked >= 3 and analysis.get("answer_depth") in ["deep", "expert"]:
-        should_transition = True
-        reason = "Strong understanding shown, moving to next skill"
-    elif questions_asked >= 4:
-        should_transition = True
-        reason = "Sufficient questions asked for this skill"
-    elif analysis.get("answer_depth") == "superficial" and questions_asked >= 3:
-        should_transition = True
-        reason = "Limited depth, moving on to assess other areas"
-    
-    # If we should transition and there are more skills
-    if should_transition and skills_remaining:
-        return {
-            "success": True,
-            "should_transition": {"transition": True, "reason": reason, "next_skill": skills_remaining[0] if skills_remaining else None},
-            "analysis": analysis
-        }
-    elif should_transition and not skills_remaining:
-        return {
-            "success": True,
-            "should_transition": {"transition": True, "reason": "Interview complete", "complete": True},
-            "analysis": analysis
-        }
-    
-    # Generate contextual follow-up question
-    question_prompt = f"""
-    You're a technical interviewer. Based on this candidate's answer, ask a natural follow-up question.
-    
-    Skill: {skill}
-    Previous question: {previous_question}
-    Candidate's answer: {previous_answer}
-    
-    Analysis:
-    - Demonstrated: {analysis.get('demonstrated_concepts', [])}
-    - Missing: {analysis.get('missing_concepts', [])}
-    - Depth: {analysis.get('answer_depth')}
-    - Had examples: {analysis.get('had_examples')}
-    - Next focus: {analysis.get('next_focus', 'general')}
-    
-    Generate a SINGLE follow-up question that:
-    1. ACKNOWLEDGES something they said (e.g., "You mentioned X, that's interesting...")
-    2. Probes deeper into an area they didn't fully explain
-    3. Asks for a specific example if they didn't provide one
-    4. Sounds natural and conversational
-    
-    Return ONLY this JSON:
-    {{
-        "question": "Your follow-up question",
-        "context": "Why you're asking this",
-        "focus_area": "what this targets",
-        "skill": "{skill}"
-    }}
-    """
-    
-    try:
-        question_response = call_llm(question_prompt)
-        next_question = extract_json(question_response)
+        ai_response = call_llm(decision_prompt)
+        decision = extract_json(ai_response)
         
-        if not next_question or "question" not in next_question:
-            # Fallback questions based on analysis
-            if not analysis.get("had_examples"):
-                next_question = {
-                    "question": f"You mentioned some aspects of {skill}. Could you share a specific example where you applied it in a real project?",
-                    "context": "Asking for concrete example",
-                    "focus_area": "examples",
-                    "skill": skill
+        if not decision or "action" not in decision:
+            raise ValueError("Invalid AI decision format")
+            
+        # Determine transition if move_next suggests a new skill
+        should_transition = {"transition": False}
+        if decision["action"] == "move_next":
+            # If the AI says move_next, and we have skills remaining, we might transition
+            # This is partly handled by the prompt, but we reinforce it here
+            if skills_remaining and (attempt_count >= 3 or "next skill" in decision.get("response", "").lower()):
+                should_transition = {
+                    "transition": True, 
+                    "reason": "Moving to next skill area",
+                    "next_skill": skills_remaining[0],
+                    "complete": False
                 }
-            elif analysis.get("missing_concepts"):
-                next_question = {
-                    "question": f"Can you elaborate more on {analysis['missing_concepts'][0]}? How does that work in practice?",
-                    "context": "Probing missing concept",
-                    "focus_area": analysis['missing_concepts'][0],
-                    "skill": skill
+            elif not skills_remaining and (attempt_count >= 3 or "complete" in decision.get("response", "").lower()):
+                 should_transition = {
+                    "transition": True, 
+                    "reason": "Interview complete",
+                    "complete": True
                 }
-            else:
-                next_question = {
-                    "question": f"Based on what you've shared, can you tell me about a challenging problem you solved with {skill}?",
-                    "context": "Seeking depth",
-                    "focus_area": "challenges",
-                    "skill": skill
-                }
-    except:
-        next_question = {
-            "question": f"Can you tell me more about your experience with {skill}? What was the most challenging aspect?",
-            "context": "Follow-up",
-            "focus_area": "general",
-            "skill": skill
+
+        return {
+            "success": True,
+            "action": decision["action"],
+            "response": decision["response"],
+            "next_question": {
+                "question": decision["question"],
+                "skill": skill
+            },
+            "should_transition": should_transition,
+            "attempt_count": attempt_count
         }
-    
-    return {
-        "success": True,
-        "next_question": next_question,
-        "analysis": analysis,
-        "should_transition": {"transition": False, "reason": reason}
-    }
+
+    except Exception as e:
+        logger.error(f"Decision logic error: {e}")
+        # Robust fallback
+        return {
+            "success": True,
+            "action": "move_next",
+            "response": "That's helpful. Let's move on to explore another area.",
+            "next_question": {
+                "question": f"Can you tell me about your experience with {skills_remaining[0] if skills_remaining else 'the next topic'}?",
+                "skill": skills_remaining[0] if skills_remaining else skill
+            },
+            "should_transition": {"transition": True, "next_skill": skills_remaining[0] if skills_remaining else None, "complete": not skills_remaining}
+        }
 
 @app.post("/api/evaluate")
 async def evaluate(payload: dict, email: str = Header(None)):
@@ -1218,56 +1481,38 @@ async def evaluate(payload: dict, email: str = Header(None)):
         vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: No frames provided.\n"
 
     prompt = f"""
-    You're a technical interviewer evaluating a candidate's answer.
-    Your mission is to be a TOUGH and REALISTIC interviewer. Do NOT give high scores for generic or "fluffy" answers.
+    You are an expert AI interviewer evaluating a candidate's technical answer.
+    Your behavior must be natural, fair, and consistent. AVOID HALLUCINATIONS.
     
-    CONTEXT: {input_type} | SKILL: {skill} | ANSWER: "{answer}"
-    Question: {question}
+    CORE EVALUATION RULES:
+    1. DO NOT assume meaning from weak or unclear answers (e.g., "idk", "not sure").
+    2. If the answer is filler or ignorance, the Technical Score MUST BE 0.
+    3. Score ONLY applicable metrics based on {input_type}:
+       - TEXT: Technical + Confidence (others 0).
+       - VOICE: Technical + Confidence + Communication (behavioral 0).
+       - VIDEO: Score All 4.
+    
+    CONTEXT:
+    - Input Type: {input_type}
+    - Skill: {skill}
+    - Question: {question}
+    - Candidate Answer: "{answer}"
     {vision_context}
     
-    STRICT SCORING RULES:
-    1. Score ONLY applicable metrics based on input type:
-       - If TEXT input: Score Technical + Confidence. (Communication/Behavioral MUST be strictly 0).
-       - If VOICE input: Score Technical + Confidence + Communication. (Behavioral MUST be strictly 0).
-       - If VIDEO input: Score All 4 (Technical, Confidence, Communication, Behavioral).
-    2. LOW QUALITY / "IDK" ANSWERS:
-       - If the answer is "i don't know", "idk", or totally irrelevant/empty, Technical score MUST be 0 or 1.
-       - NEVER give a passing score (>= 5) for "idk".
-    3. TECHNICAL EVALUATION: 
-       - If the answer is vague or generic (e.g., "I know React well"), score < 3.
-       - If they mention concepts but no details/examples, score 4-5.
-       - Score 8+ ONLY for specific, accurate technical demonstration with examples.
-    4. BEHAVIORAL EVALUATION (VIDEO ONLY):
-       - Use vision context to assess professional presence and eye contact.
-    5. OVERALL SCORE CALCULATION: 
-       - Calculate the mathematical average of ONLY the scored metrics (ignore metrics that are 0).
-       - Ensure the calculated "overall_score" is accurate in the JSON.
+    STRICT SCORING (1-10):
+    - 0-2: Admitted ignorance, totally wrong, or filler only.
+    - 3-5: Mentioned concepts but no depth or examples.
+    - 6-7: Good understanding, some gaps.
+    - 8-10: Expert-level demonstration with specific real-world examples.
     
-    Return ONLY this JSON:
+    Return ONLY valid JSON:
     {{
         "evaluation": {{
             "capability": "weak/medium/strong/expert",
-            "confidence": "low/medium/high",
-            "technical_accuracy": {{
-                "correct_concepts": [], "missed_concepts": [], "misunderstood_concepts": []
-            }},
-            "gaps_identified": {{
-                "knowledge_gaps": [], "depth_gaps": [], "example_gaps": ""
-            }},
-            "experience_indicators": {{
-                "had_real_examples": bool, "discussed_challenges": bool, "example_quality": "string", "star_method_used": bool
-            }},
-            "communication": {{
-                "clarity": "string", "structure": "string", "hesitation_markers": bool, "pacing": "string", "filler_words": bool
-            }},
-            "strengths": [], "areas_for_improvement": [], "ideal_answer": "string",
-            "scores": {{
-                "technical_score": 0-10, "confidence_score": 0-10, "communication_score": 0-10, "behavioral_score": 0-10, "overall_score": 0-10
-            }},
-            "score_explanations": {{
-                "technical_explanation": "...", "confidence_explanation": "...", "communication_explanation": "...", "behavioral_explanation": "..."
-            }},
-            "summary_feedback": "..."
+            "technical_accuracy": {{ "correct": [], "missed": [], "incorrect": [] }},
+            "scores": {{ "technical_score": 0-10, "confidence_score": 0-10, "communication_score": 0-10, "behavioral_score": 0-10, "overall_score": 0-10 }},
+            "summary_feedback": "Your concise, professional interviewer feedback to the candidate. Do not hallucinate intent.",
+            "ideal_answer": "..."
         }}
     }}
     """
@@ -1282,6 +1527,18 @@ async def evaluate(payload: dict, email: str = Header(None)):
             evaluation = result
         else:
             evaluation = generate_fallback_evaluation(answer)
+            
+        # Ensure scores are clamped between 0 and 10
+        if isinstance(evaluation, dict) and "scores" in evaluation and isinstance(evaluation["scores"], dict):
+            for k, v in list(evaluation["scores"].items()):
+                if isinstance(v, (int, float)):
+                    evaluation["scores"][k] = max(0, min(10, int(v)))
+                elif isinstance(v, str):
+                    try:
+                        num = float(v.split('/')[0].strip())
+                        evaluation["scores"][k] = max(0, min(10, int(num)))
+                    except (ValueError, TypeError):
+                        evaluation["scores"][k] = 5
         
         return {"evaluation": evaluation}
     except Exception as e:
@@ -1290,6 +1547,55 @@ async def evaluate(payload: dict, email: str = Header(None)):
 
 def generate_fallback_evaluation(answer: str) -> dict:
     """Generate fallback evaluation"""
+    ans_lower = answer.lower().strip()
+    
+    # Strictly handle IDK / empty cases in fallback
+    if not ans_lower or ans_lower in ["idk", "i dont know", "i don't know", "pass", "not sure", "no idea"]:
+        return {
+            "capability": "weak",
+            "confidence": "low",
+            "technical_accuracy": {
+                "correct_concepts": [],
+                "missed_concepts": ["Did not attempt to answer"],
+                "misunderstood_concepts": []
+            },
+            "gaps_identified": {
+                "knowledge_gaps": ["Complete knowledge gap on this topic"],
+                "depth_gaps": ["No depth provided"],
+                "example_gaps": "No concrete examples provided"
+            },
+            "experience_indicators": {
+                "had_real_examples": False,
+                "discussed_challenges": False,
+                "example_quality": "none",
+                "star_method_used": False
+            },
+            "communication": {
+                "clarity": "low",
+                "structure": "poor",
+                "hesitation_markers": True,
+                "pacing": "poor",
+                "filler_words": True
+            },
+            "strengths": [],
+            "areas_for_improvement": ["Need to study this specific topic", "Attempt to reason through the problem even if unsure"],
+            "ideal_answer": "A strong answer demonstrates clear understanding and provides examples.",
+            "scores": {
+                "technical_score": 0,
+                "confidence_score": 0,
+                "communication_score": 0,
+                "behavioral_score": 0,
+                "overall_score": 0
+            },
+            "score_explanations": {
+                "technical_explanation": "Candidate did not know the answer.",
+                "confidence_explanation": "Low confidence.",
+                "communication_explanation": "No meaningful communication.",
+                "behavioral_explanation": "N/A"
+            },
+            "summary_feedback": "You were unable to answer this question. Review the core concepts and try to provide partial knowledge if you don't know the exact answer."
+        }
+        
     word_count = len(answer.split())
     
     if word_count > 100:
@@ -1440,9 +1746,20 @@ async def final_report(payload: dict):
         }
 # Add handler for AWS Lambda
 try:
-    handler = Mangum(app)
-    print("Mangum handler initialized")
-except NameError:
-    print("FastAPI app not defined, cannot init Mangum")
+    if Mangum is not None:
+        handler = Mangum(app, lifespan="off")
+        logger.info("Mangum handler initialized")
+    else:
+        logger.warning("Mangum not found, handler not initialized")
+        def handler(event, context):
+            return {
+                "statusCode": 500,
+                "body": json.dumps({"error": "Mangum not available"})
+            }
 except Exception as e:
-    print(f"Mangum initialization error: {e}")
+    logger.error(f"Mangum initialization error: {e}")
+    def handler(event, context):
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }

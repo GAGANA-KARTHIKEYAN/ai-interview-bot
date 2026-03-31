@@ -343,7 +343,7 @@ export default function Dashboard() {
 
     const actualReason = reason || terminationReason || 'Interview ended early';
     // Calculate actual partial score from questions answered so far (not 0)
-    const historyToScore = interviewMode === 'dynamic' ? questionHistory : results;
+    const historyToScore = interviewMode === 'dynamic' ? (allInterviewHistory.length > 0 ? allInterviewHistory : questionHistory) : results;
     const partialScore = interviewMode === 'dynamic'
       ? calculateDynamicOverallScore(historyToScore, tabCountRef.current)
       : calculateOverallScore(historyToScore);
