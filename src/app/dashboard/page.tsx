@@ -1382,20 +1382,6 @@ export default function Dashboard() {
       } else {
         // Continue with next question for same skill (retry, hint, or probe/level_up)
         const questionText = decision.next_question || decision.question || "I have no further questions for this topic. Let's proceed.";
-        const feedbackPrefix = decision.feedback_to_user || decision.response || '';
-        
-        // Deduplication guard: if next_question is already at the end of feedback_to_user, don't repeat it
-        let cleanedPrefix = (feedbackPrefix || '').trim();
-        const cleanedQuestion = (questionText || '').trim();
-        let interviewerResponse = feedbackPrefix ? `${feedbackPrefix} ${questionText}` : questionText;
-        
-        if (cleanedPrefix.toLowerCase().endsWith(cleanedQuestion.toLowerCase())) {
-          // If the prefix already ends with the question, just use the prefix
-          interviewerResponse = cleanedPrefix;
-        } else if (cleanedPrefix.toLowerCase().includes(cleanedQuestion.toLowerCase()) && cleanedPrefix.length > cleanedQuestion.length + 10) {
-           // If it contains it but maybe with a period at the end
-           interviewerResponse = cleanedPrefix;
-        }
         
         // Update level if provided
         if (decision.level) {
@@ -1408,7 +1394,7 @@ export default function Dashboard() {
         setVideoFrames([]);
 
         setInterviewStep('interview');
-        speak(interviewerResponse);
+        speak(questionText);
       }
 
       // Clear answer box
