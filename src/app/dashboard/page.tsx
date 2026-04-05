@@ -2809,7 +2809,7 @@ export default function Dashboard() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                               <h4 style={{ fontWeight: '800', fontSize: '18px', color: isAttempted ? 'var(--gray-900)' : 'var(--gray-500)' }}>{skillName}</h4>
                               {isAttempted ? (
-                                lastEval?.scores?.overall_score ? (
+                                (lastEval?.scores?.overall_score !== undefined && lastEval?.scores?.overall_score !== null) ? (
                                   <div className="badge badge-primary">{lastEval.scores.overall_score * 10}%</div>
                                 ) : (
                                   <div className="badge" style={{ background: 'var(--success-100)', color: 'var(--success-700)' }}>Completed</div>
