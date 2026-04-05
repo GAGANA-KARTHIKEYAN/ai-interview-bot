@@ -1141,6 +1141,14 @@ export default function Dashboard() {
 
   const submitDynamicAnswer = async () => {
     if (submittingRef.current || isGeneratingNext) return; // Block if already submitting OR generating next Q
+    
+    // Unlock SpeechSynthesis immediately on user click to bypass browser blocks
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        const unlockUtterance = new SpeechSynthesisUtterance('');
+        unlockUtterance.volume = 0;
+        window.speechSynthesis.speak(unlockUtterance);
+    }
+
     submittingRef.current = true;
     stopAnswerTimer();
     stopVideoRecording();
@@ -1231,9 +1239,24 @@ export default function Dashboard() {
       setInterviewStep('feedback');
 
       // Speak interviewer's initial evaluation feedback
-      if (decision?.feedback_to_user) {
-        speak(decision.feedback_to_user);
-      } else if (evaluation.summary_feedback) {
+      let speechText = decision?.feedback_to_user || '';
+      
+      const weaknesses = evaluation?.weaknesses || evaluation?.gaps_identified?.knowledge_gaps || [];
+      const improvements = evaluation?.improvement_tips || [];
+      const strengths = evaluation?.strengths || evaluation?.technical_accuracy?.correct_concepts || [];
+      
+      // If it's a move_next or an end of skill, make sure the AI actually reads out some feedback!
+      if (improvements.length > 0) {
+        speechText += " " + improvements[0]; // Read one improvement tip
+      } else if (weaknesses.length > 0) {
+        speechText += " A quick tip: " + weaknesses[0];
+      } else if (strengths.length > 0) {
+        speechText += " Really good job mentioning " + strengths[0] + ".";
+      }
+
+      if (speechText.trim()) {
+        speak(speechText.trim());
+      } else if (evaluation?.summary_feedback) {
         speak(evaluation.summary_feedback);
       }
 
