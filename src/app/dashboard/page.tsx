@@ -1363,9 +1363,9 @@ export default function Dashboard() {
           setCurrentLevel(1); // Reset level for new skill
 
           const nextSkill = skills[nextIndex];
-          const questionText = decision.next_question || decision.question || `Let's move on to ${nextSkill.skill}. Can you tell me about your experience with it?`;
-          const feedbackPrefix = decision.feedback_to_user || decision.response || '';
-          const interviewerResponse = feedbackPrefix ? `${feedbackPrefix} ${questionText}` : questionText;
+          // Since we are transitioning to a NEW skill, ignore previous skill's conversational filler
+          const questionText = `Let's move on to ${nextSkill.skill}. Can you tell me about your experience with it?`;
+          const interviewerResponse = questionText;
 
           setCurrentQuestion(questionText);
           setQuestionHistory([]);

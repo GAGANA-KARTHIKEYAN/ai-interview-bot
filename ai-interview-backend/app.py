@@ -1290,6 +1290,9 @@ async def submit_answer_consolidated(payload: dict, email: str = Header(None)):
                 }
             else:
                 should_transition = {"transition": True, "reason": "Interview complete", "complete": True}
+            
+            # CRITICAL: Prevent the LLM from leaking "I have no questions" as the next technical question.
+            result["next_question"] = ""
 
         # ===== HISTORICAL WEAKNESS RAG: Save weaknesses to DynamoDB =====
         # Fire-and-forget: don't block the response if DynamoDB is unavailable
