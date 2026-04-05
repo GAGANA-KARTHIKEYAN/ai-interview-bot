@@ -1231,7 +1231,9 @@ export default function Dashboard() {
       setInterviewStep('feedback');
 
       // Speak interviewer's initial evaluation feedback
-      if (evaluation.summary_feedback) {
+      if (decision?.feedback_to_user) {
+        speak(decision.feedback_to_user);
+      } else if (evaluation.summary_feedback) {
         speak(evaluation.summary_feedback);
       }
 
