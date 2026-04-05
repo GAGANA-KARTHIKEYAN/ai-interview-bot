@@ -2855,6 +2855,40 @@ export default function Dashboard() {
                                     </div>
                                   </div>
                                 )}
+
+
+                                {/* RAG Weakness Logger */}
+                                {(() => {
+                                  let rawWeaknesses: string[] = [];
+                                  for (let i = 0; i < skillHistory.length; i++) {
+                                    const q = skillHistory[i];
+                                    const tech = q.evaluation?.evaluation?.technical_accuracy || q.evaluation?.technical_accuracy || {};
+                                    if (tech.missed) rawWeaknesses.push(...tech.missed);
+                                    if (tech.incorrect) rawWeaknesses.push(...tech.incorrect);
+                                  }
+                                  const ragWeaknesses = rawWeaknesses.filter((item, index, arr) => {
+                                    return arr.indexOf(item) === index && item && item.trim().length > 0 && !item.includes("(System: LLM skipped");
+                                  });
+
+                                  if (ragWeaknesses.length > 0) {
+                                    return (
+                                      <div style={{ marginTop: '16px', padding: '16px', background: '#fffbeb', borderRadius: '12px', border: '1px solid #fde68a' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: '800', color: '#b45309', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span style={{ fontSize: '14px' }}>🧠</span> Active Memory (RAG Tracker)
+                                        </div>
+                                        <div style={{ fontSize: '13px', color: '#92400e', marginBottom: '10px', lineHeight: '1.5' }}>
+                                          The AI has logged the following technical gaps. <strong>Expect your next dynamic interview to forcefully test you on these specific topics:</strong>
+                                        </div>
+                                        <ul style={{ margin: 0, paddingLeft: '20px', color: '#92400e', fontSize: '13px' }}>
+                                          {ragWeaknesses.slice(0, 8).map((w, i) => (
+                                            <li key={i} style={{ marginBottom: '6px', fontWeight: '500' }}>{w}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             )}
                           </div>
