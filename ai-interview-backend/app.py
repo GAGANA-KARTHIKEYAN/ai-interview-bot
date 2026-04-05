@@ -14,7 +14,6 @@ import io
 import base64
 import sys
 from dotenv import load_dotenv
-from groq import Groq
 from typing import List, Dict, Any, Optional, cast
 import pdfplumber
 import pypdf
@@ -451,24 +450,23 @@ os.environ.pop('HTTPS_PROXY', None)
 os.environ.pop('http_proxy', None)
 os.environ.pop('https_proxy', None)
 
-# Initialize Groq client lazily
-def get_groq_client():
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        logger.error("GROQ_API_KEY not found in environment")
-        return None
+# Initialize AWS Bedrock client lazily
+def get_bedrock_client():
     try:
-        return Groq(api_key=api_key)
+        import boto3
+        
+        region = os.environ.get("APP_REGION", "us-east-1")
+        # Ensure we are using the region that has model access enabled
+        return boto3.client("bedrock-runtime", region_name=region)
     except Exception as e:
-        logger.error(f"Failed to initialize Groq client: {e}")
+        logger.error(f"Failed to initialize Bedrock client: {e}")
         return None
 
 @app.get("/api/status")
 async def get_status():
-    api_key = os.getenv("GROQ_API_KEY")
     return {
         "status": "online",
-        "groq_configured": bool(api_key),
+        "llm_engine": "amazon.nova-lite-v1:0 (AWS Bedrock)",
         "storage_backend": "AWS DynamoDB + S3",
         "environment": "cloud" if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else "local",
         "data_dir_exists": os.path.exists(DATA_DIR),
@@ -477,22 +475,36 @@ async def get_status():
     }
 
 def call_llm(prompt: str, max_tokens: int = 2000) -> str:
-    """Call Groq LLM"""
-    client = get_groq_client()
+    """Call Amazon Nova Lite via AWS Bedrock Converse API"""
+    client = get_bedrock_client()
     if not client:
-        return "Error: AI not configured. Please set GROQ_API_KEY."
+        return "Error: AI Bedrock runtime not configured properly."
+    
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+        response = client.converse(
+            modelId="amazon.nova-lite-v1:0",
             messages=[
-                {"role": "user", "content": prompt}
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}]
+                }
             ],
-            temperature=0.7,
-            max_tokens=max_tokens
+            inferenceConfig={
+                "temperature": 0.7,
+                "maxTokens": max_tokens
+            }
         )
-        return response.choices[0].message.content.strip()
+        
+        # Bedrock Converse API response format
+        output_message = response.get("output", {}).get("message", {})
+        content_blocks = output_message.get("content", [])
+        
+        if content_blocks and len(content_blocks) > 0:
+            return content_blocks[0].get("text", "").strip()
+            
+        return ""
     except Exception as e:
-        logger.error(f"LLM Error: {e}")
+        logger.error(f"Bedrock LLM Error: {e}")
         return ""
 
 def extract_json(text: str) -> dict:
@@ -1232,9 +1244,8 @@ async def submit_answer_consolidated(payload: dict, email: str = Header(None)):
     - **MANDATORY**: Your JSON response MUST explicitly include the "technical_accuracy" object exactly as shown, with "correct", "missed", and "incorrect" arrays. Do not skip this field.
 
     SYNC RULE: 
-    - The "feedback_to_user" should be purely conversational (e.g., "Good point", "I see", "Let's dig deeper") and ONLY provide a transition.
-    - **CRITICAL**: DO NOT include the next technical question or any part of it in "feedback_to_user".
-    - "next_question" is the core technical prompt that will be shown on screen and should NOT contain conversational filler.
+    - The "feedback_to_user" should contain your FULL evaluation. If the candidate missed something or you want them to elaborate, explain exactly what they missed and ask them to provide more detail HERE in the feedback.
+    - **CRITICAL**: The "next_question" must be a pure, standalone technical question. DO NOT put conversational filler, corrections, or phrases like "You missed X, so can you elaborate?" in "next_question". It must be ONLY the technical prompt.
     - If the "feedback_to_user" and "next_question" are combined by the UI, they must not result in redundant sentences.
     """
 

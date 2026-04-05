@@ -1,4 +1,5 @@
 service: ai-interview-backend
+useDotenv: true
 
 provider:
   name: aws
@@ -12,12 +13,35 @@ provider:
       - '*/*'
   environment:
     GROQ_API_KEY: ${env:GROQ_API_KEY, ''}
-    SUPABASE_URL: ${env:SUPABASE_URL, ''}
-    SUPABASE_KEY: ${env:SUPABASE_KEY, ''}
+    APP_REGION: ${env:APP_REGION, 'us-east-1'}
+    S3_BUCKET_NAME: ${env:S3_BUCKET_NAME, 'ai-interview-bot-storage'}
     DATA_DIR: /tmp/data
     RESUMES_DIR: /tmp/data/resumes
     PROFILES_FILE: /tmp/data/profiles.json
     USERS_FILE: /tmp/data/users.json
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:Scan
+        - dynamodb:Query
+      Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/Interview*"
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:DeleteObject
+        - s3:ListBucket
+      Resource: "arn:aws:s3:::${self:provider.environment.S3_BUCKET_NAME}*"
+    - Effect: Allow
+      Action:
+        - bedrock:InvokeModel
+      Resource: "*"
+
 
 functions:
   api:
@@ -36,7 +60,6 @@ functions:
               - X-Amz-Security-Token
               - X-Amz-User-Agent
               - email
-            allowCredentials: false
       - http:
           path: /{proxy+}
           method: any
@@ -50,16 +73,18 @@ functions:
               - X-Amz-Security-Token
               - X-Amz-User-Agent
               - email
-            allowCredentials: false
 
 plugins:
   - serverless-python-requirements
+
 
 custom:
   pythonRequirements:
     dockerizePip: true
     useDownloadCache: false
     useStaticCache: false
+    strip: false
+    slim: false
 
 package:
   patterns:
@@ -67,3 +92,31 @@ package:
     - "!.git/**"
     - "!__pycache__/**"
     - "!node_modules/**"
+    - "!.env"
+    - "!aws_setup_log.txt"
+    - "!*.md"
+    - "!*.exe"
+
+resources:
+  Resources:
+    GatewayResponseDefault4XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+    GatewayResponseDefault5XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        ResponseType: DEFAULT_5XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+
