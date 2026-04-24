@@ -1153,7 +1153,11 @@ export default function Dashboard() {
     stopAnswerTimer();
     stopVideoRecording();
 
-    const answer = answerBoxRef.current?.value || '';
+    let answer = answerBoxRef.current?.value || '';
+    if (!answer.trim() && inputMethod === 'VIDEO' && videoFrames.length > 0) {
+      answer = "[Video response recorded]";
+    }
+
     if (!answer.trim() && !interviewTerminated) {
       alert('Please answer the question');
       submittingRef.current = false;
@@ -1588,7 +1592,11 @@ export default function Dashboard() {
     stopAnswerTimer();
     stopVideoRecording();
 
-    const answer = answerBoxRef.current?.value || '';
+    let answer = answerBoxRef.current?.value || '';
+    if (!answer.trim() && inputMethod === 'VIDEO' && videoFrames.length > 0) {
+      answer = "[Video response recorded]";
+    }
+
     if (!answer.trim() && !isTerminated) {
       alert('Please answer the question');
       resetAnswerTimer();

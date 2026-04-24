@@ -1,4 +1,4 @@
-export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://wrt0xf7505.execute-api.us-east-1.amazonaws.com/dev";
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface RequestOptions extends RequestInit {
     email?: string;
@@ -34,7 +34,11 @@ export async function apiClient(endpoint: string, options: RequestOptions = {}) 
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.detail || "API request failed");
+        const errMsg = errorData.error || errorData.detail || "API request failed";
+        if (errMsg === "Email required") {
+            throw new Error("Session expired (Email required). Please refresh or sign in again.");
+        }
+        throw new Error(errMsg);
     }
 
     return response.json();
