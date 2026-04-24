@@ -1154,8 +1154,8 @@ export default function Dashboard() {
     stopVideoRecording();
 
     let answer = answerBoxRef.current?.value || '';
-    if (!answer.trim() && inputMethod === 'VIDEO' && videoFrames.length > 0) {
-      answer = "[Video response recorded]";
+    if (!answer.trim() && (inputMethod === 'VIDEO' || inputMethod === 'VOICE')) {
+      answer = "[Response recorded via " + inputMethod.toLowerCase() + "]";
     }
 
     if (!answer.trim() && !interviewTerminated) {
@@ -1264,8 +1264,9 @@ export default function Dashboard() {
         speak(evaluation.summary_feedback);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in dynamic flow:', error);
+      alert('Error submitting answer: ' + (error.message || error));
       setIsGeneratingNext(false);
       setInterviewStep('interview');
     } finally {
@@ -1593,8 +1594,8 @@ export default function Dashboard() {
     stopVideoRecording();
 
     let answer = answerBoxRef.current?.value || '';
-    if (!answer.trim() && inputMethod === 'VIDEO' && videoFrames.length > 0) {
-      answer = "[Video response recorded]";
+    if (!answer.trim() && (inputMethod === 'VIDEO' || inputMethod === 'VOICE')) {
+      answer = "[Response recorded via " + inputMethod.toLowerCase() + "]";
     }
 
     if (!answer.trim() && !isTerminated) {
