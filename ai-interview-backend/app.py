@@ -450,20 +450,23 @@ os.environ.pop('HTTPS_PROXY', None)
 os.environ.pop('http_proxy', None)
 os.environ.pop('https_proxy', None)
 
-# Initialize Groq client lazily
-def get_groq_client():
+# Initialize AWS Bedrock client lazily
+def get_bedrock_client():
     try:
-        from groq import Groq
-        return Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        import boto3
+        
+        region = os.environ.get("APP_REGION", "us-east-1")
+        # Ensure we are using the region that has model access enabled
+        return boto3.client("bedrock-runtime", region_name=region)
     except Exception as e:
-        logger.error(f"Failed to initialize Groq client: {e}")
+        logger.error(f"Failed to initialize Bedrock client: {e}")
         return None
 
 @app.get("/api/status")
 async def get_status():
     return {
         "status": "online",
-        "llm_engine": "llama-3.1-70b-versatile (Groq)",
+        "llm_engine": "amazon.nova-lite-v1:0 (AWS Bedrock)",
         "storage_backend": "AWS DynamoDB + S3",
         "environment": "cloud" if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") else "local",
         "data_dir_exists": os.path.exists(DATA_DIR),
@@ -472,30 +475,36 @@ async def get_status():
     }
 
 def call_llm(prompt: str, max_tokens: int = 2000) -> str:
-    """Call Groq API"""
-    client = get_groq_client()
+    """Call Amazon Nova Lite via AWS Bedrock Converse API"""
+    client = get_bedrock_client()
     if not client:
-        return "Error: AI runtime not configured properly."
+        return "Error: AI Bedrock runtime not configured properly."
     
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
+        response = client.converse(
+            modelId="amazon.nova-lite-v1:0",
             messages=[
                 {
                     "role": "user",
-                    "content": prompt
+                    "content": [{"text": prompt}]
                 }
             ],
-            temperature=0.7,
-            max_tokens=max_tokens
+            inferenceConfig={
+                "temperature": 0.7,
+                "maxTokens": max_tokens
+            }
         )
         
-        if response.choices and len(response.choices) > 0:
-            return response.choices[0].message.content.strip()
+        # Bedrock Converse API response format
+        output_message = response.get("output", {}).get("message", {})
+        content_blocks = output_message.get("content", [])
+        
+        if content_blocks and len(content_blocks) > 0:
+            return content_blocks[0].get("text", "").strip()
             
         return ""
     except Exception as e:
-        logger.error(f"Groq LLM Error: {e}")
+        logger.error(f"Bedrock LLM Error: {e}")
         return ""
 
 def extract_json(text: str) -> dict:
