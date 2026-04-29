@@ -1194,11 +1194,14 @@ export default function Dashboard() {
           skill: skill,
           history: questionHistory,
           input_type: inputMethod,
-          video_frames: videoFrames,
+          video_frames: inputMethod === 'VIDEO' ? videoFrames : [],
           skills_remaining: skills.slice(currentIndex + 1).map(s => s.skill),
           level: currentLevel
         })
       });
+
+      // Clear frames immediately after submission to prevent leaking into next answer
+      setVideoFrames([]);
 
       if (!response.success) {
         throw new Error(response.error || 'Failed to submit answer');
@@ -1618,12 +1621,15 @@ export default function Dashboard() {
           terminated: isTerminated,
           tabSwitches: tabSwitchCount,
           input_type: inputMethod,
-          video_frames: videoFrames
+          video_frames: inputMethod === 'VIDEO' ? videoFrames : []
         }),
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
+
+      // Clear frames immediately after submission to prevent leaking into next answer
+      setVideoFrames([]);
 
 
       const e = data.evaluation || data;
