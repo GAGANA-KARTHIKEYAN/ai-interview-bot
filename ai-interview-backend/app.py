@@ -1138,22 +1138,29 @@ async def submit_answer_consolidated(payload: dict, email: str = Header(None)):
     # 1. Behavioral Analysis (if video)
     vision_context = ""
     if input_type == "VIDEO" and frames:
-        client = get_groq_client()
-        if client:
-            try:
-                content = [{"type": "text", "text": "Analyze behavioral aspects: face visibility, eye contact, professional presence. Under 30 words."}]
+        try:
+            client = get_bedrock_client()
+            if client:
+                content = [{"text": "Analyze behavioral aspects: face visibility, eye contact, professional presence. Under 30 words."}]
                 for f in frames[:3]: # Limit frames to save tokens
-                    content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{f}"}})
-                v_resp = client.chat.completions.create(
-                    model="llama-3.2-11b-vision-preview",
+                    content.append({
+                        "image": {
+                            "format": "jpeg",
+                            "source": {"bytes": base64.b64decode(f)}
+                        }
+                    })
+                
+                v_resp = client.converse(
+                    modelId="amazon.nova-lite-v1:0",
                     messages=[{"role": "user", "content": content}],
-                    temperature=0.3,
-                    max_tokens=200
+                    inferenceConfig={"maxTokens": 200, "temperature": 0.3}
                 )
-                vision_context = f"VIDEO ANALYSIS: {v_resp.choices[0].message.content.strip()}"
-            except Exception as e:
-                logger.error(f"Vision error: {e}")
-                vision_context = "VIDEO ANALYSIS: Error processing frames."
+                vision_text = v_resp.get('output', {}).get('message', {}).get('content', [{}])[0].get('text', '')
+                vision_context = f"VIDEO ANALYSIS: {vision_text.strip()}"
+        except Exception as e:
+            import traceback
+            logger.error(f"Vision error: {str(e)}\n{traceback.format_exc()}")
+            vision_context = "VIDEO ANALYSIS: Error processing frames."
 
     # 2. Level and Attempt Tracking
     current_level = payload.get("level", 1)
@@ -1288,6 +1295,16 @@ async def submit_answer_consolidated(payload: dict, email: str = Header(None)):
                     eval_dict["scores"][k] = max(0, min(10, int(num)))
                 except (ValueError, TypeError):
                     eval_dict["scores"][k] = 5
+
+        # HARD ENFORCEMENT: zero out scores not applicable to this input type
+        if input_type == "TEXT":
+            eval_dict["scores"]["behavioral_score"] = 0
+            eval_dict["scores"]["communication_score"] = 0
+            eval_dict["scores"]["behavioral"] = 0
+            eval_dict["scores"]["communication"] = 0
+        elif input_type == "VOICE":
+            eval_dict["scores"]["behavioral_score"] = 0
+            eval_dict["scores"]["behavioral"] = 0
 
         # Logic for skill transition
         should_transition = {"transition": False}
@@ -1473,24 +1490,29 @@ async def evaluate(payload: dict, email: str = Header(None)):
     vision_context = ""
     frames = payload.get("video_frames", [])
     if input_type == "VIDEO" and frames:
-        client = get_groq_client()
-        if client:
-            try:
-                content: list[dict[str, Any]] = [{"type": "text", "text": "Analyze these video frames from an interview. 1. Is the candidate's face clearly visible? 2. Are they making good eye contact with the camera, or looking away? 3. Is the camera covered/blank? Keep it under 30 words focusing strictly on these behavioral aspects."}]
+        try:
+            client = get_bedrock_client()
+            if client:
+                content = [{"text": "Analyze these video frames from an interview. 1. Is the candidate's face clearly visible? 2. Are they making good eye contact with the camera, or looking away? 3. Is the camera covered/blank? Keep it under 30 words focusing strictly on these behavioral aspects."}]
                 for f in frames:
-                    content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{f}"}})
-                v_resp = client.chat.completions.create(
-                    model="llama-3.2-11b-vision-preview",
+                    content.append({
+                        "image": {
+                            "format": "jpeg",
+                            "source": {"bytes": base64.b64decode(f)}
+                        }
+                    })
+                    
+                v_resp = client.converse(
+                    modelId="amazon.nova-lite-v1:0",
                     messages=[{"role": "user", "content": content}],
-                    temperature=0.3,
-                    max_tokens=200
+                    inferenceConfig={"maxTokens": 200, "temperature": 0.3}
                 )
-                vision_context = f"\nBEHAVIORAL VIDEO ANALYSIS:\n{v_resp.choices[0].message.content.strip()}\n"
-            except Exception as e:
-                logger.error(f"Vision AI error: {e}")
-                vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: Processing error.\n"
-        else:
-            vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: Vision AI not configured.\n"
+                vision_text = v_resp.get('output', {}).get('message', {}).get('content', [{}])[0].get('text', '')
+                vision_context = f"\nBEHAVIORAL VIDEO ANALYSIS:\n{vision_text.strip()}\n"
+        except Exception as e:
+            import traceback
+            logger.error(f"Vision AI error: {str(e)}\n{traceback.format_exc()}")
+            vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: Processing error.\n"
     elif input_type == "VIDEO":
         vision_context = "\nBEHAVIORAL VIDEO ANALYSIS: No frames provided.\n"
 
@@ -1553,6 +1575,19 @@ async def evaluate(payload: dict, email: str = Header(None)):
                         evaluation["scores"][k] = max(0, min(10, int(num)))
                     except (ValueError, TypeError):
                         evaluation["scores"][k] = 5
+
+        # HARD ENFORCEMENT: zero out scores not applicable to this input type
+        if isinstance(evaluation, dict) and "scores" in evaluation:
+            scores = evaluation["scores"]
+            if input_type == "TEXT":
+                scores["behavioral_score"] = 0
+                scores["communication_score"] = 0
+                scores["behavioral"] = 0
+                scores["communication"] = 0
+            elif input_type == "VOICE":
+                scores["behavioral_score"] = 0
+                scores["behavioral"] = 0
+            evaluation["scores"] = scores
         
         return {"evaluation": evaluation}
     except Exception as e:
