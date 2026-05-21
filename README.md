@@ -24,7 +24,7 @@ An adaptive, serverless technical recruitment platform that conducts real-time m
 2. **Logic Tier:** AWS API Gateway routes traffic to a stateless AWS Lambda function running Python (FastAPI).
 3. **Resource Tier:** Lambda offloads heavy multimodal inference to Amazon Bedrock and retrieves historical context from DynamoDB.
 
-## ⚙️ Local Development Setup
+## Local Development Setup
 
 ### Prerequisites
 - Node.js 18+
