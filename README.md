@@ -57,5 +57,5 @@ npm install
 npm run dev
 ```
 
-## 📄 License
+## License
 This project was developed in association with LNA Technologies Private Limited as part of an academic internship program.
